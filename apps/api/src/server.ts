@@ -70,14 +70,28 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   if (res.headersSent) {
     return next(err);
   }
+
+  // Handle Zod schema validation errors uniformly
+  if (err?.name === 'ZodError' || Array.isArray(err?.issues)) {
+    return res.status(400).json({
+      error: 'validation_error',
+      message: 'Invalid request payload',
+      details: err.issues || err.errors,
+    });
+  }
+
   const statusCode =
     typeof err.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600
       ? err.statusCode
       : 500;
 
+  const isProd = process.env.NODE_ENV === 'production';
   res.status(statusCode).json({
     error: err.code || err.name || 'internal_server_error',
-    message: err.message || 'An unexpected error occurred.',
+    message:
+      statusCode === 500 && isProd
+        ? 'An unexpected error occurred.'
+        : err.message || 'An unexpected error occurred.',
   });
 });
 
