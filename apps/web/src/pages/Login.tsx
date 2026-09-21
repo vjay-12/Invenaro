@@ -27,7 +27,7 @@ export interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNavigate }) => {
-  const { login, demoLogin } = useAuth();
+  const { login } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -36,6 +36,13 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
   // Sign in form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+
+  // First-time forced password change state
+  const [isForcePasswordChange, setIsForcePasswordChange] = useState(false);
+  const [forcedNewPassword, setForcedNewPassword] = useState('');
+  const [forcedConfirmPassword, setForcedConfirmPassword] = useState('');
+  const [forcePasswordLoading, setForcePasswordLoading] = useState(false);
+  const [forcePasswordError, setForcePasswordError] = useState<string | null>(null);
 
   // Password reset flow state
   const [isResetMode, setIsResetMode] = useState(false);
@@ -63,33 +70,41 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
     setIsLoading(true);
 
     try {
-      await login(loginEmail, loginPassword);
+      const data = await login(loginEmail, loginPassword);
+      if (data?.must_change_password) {
+        setIsForcePasswordChange(true);
+      } else if (onClose) {
+        onClose();
+      }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Invalid email or password. Please try again.');
+      setErrorMessage(err.message || 'Invalid email or password');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleQuickDemo = async (role: 'super_admin' | 'company_admin' | 'staff') => {
-    setErrorMessage(null);
-    setIsLoading(true);
+  const handleForcePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (forcedNewPassword.length < 10) {
+      setForcePasswordError('New password must be at least 10 characters.');
+      return;
+    }
+    if (forcedNewPassword !== forcedConfirmPassword) {
+      setForcePasswordError('Passwords do not match.');
+      return;
+    }
+    setForcePasswordLoading(true);
+    setForcePasswordError(null);
     try {
-      if (role === 'super_admin') {
-        setLoginEmail('superadmin@invenza.internal');
-        setLoginPassword('superadmin2026');
-      } else if (role === 'company_admin') {
-        setLoginEmail('admin@invenza.internal');
-        setLoginPassword('adminpassword2026');
-      } else {
-        setLoginEmail('staff@invenza.internal');
-        setLoginPassword('staffpassword2026');
+      await api.changePassword({ newPassword: forcedNewPassword });
+      setIsForcePasswordChange(false);
+      if (onClose) {
+        onClose();
       }
-      await demoLogin(role);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Demo login failed.');
+      setForcePasswordError(err.message || 'Failed to update password.');
     } finally {
-      setIsLoading(false);
+      setForcePasswordLoading(false);
     }
   };
 
@@ -167,74 +182,61 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
     }
   };
 
-  const renderCardContent = () => (
-    <div className={isModal ? 'w-full' : 'bg-white dark:bg-[#131924] border border-slate-200 dark:border-[#1E2636] rounded-xl p-6 sm:p-8 shadow-card'}>
-      {!isResetMode ? (
-        <>
-          {/* Header */}
+  const renderCardContent = () => {
+    if (isForcePasswordChange) {
+      return (
+        <div className={isModal ? 'w-full' : 'bg-white dark:bg-[#131924] border border-slate-200 dark:border-[#1E2636] rounded-xl p-6 sm:p-8 shadow-card'}>
           <div className="mb-6">
-            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20 mb-2">
-              <IconLock className="w-3 h-3" />
-              <span>Authorized Access Only</span>
+            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 mb-2">
+              <IconKey className="w-3 h-3" />
+              <span>Password Change Required</span>
             </div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Sign in to Invenza</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Set New Password</h2>
             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-              Enter your system credentials. Accounts are provisioned by your organization's Administrator.
+              Your account was provisioned with a temporary password. Please set a secure password (minimum 10 characters) to continue.
             </p>
           </div>
 
-          {/* Error Message */}
-          {errorMessage && (
+          {forcePasswordError && (
             <div className="mb-5 p-3 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-300 text-xs flex items-start gap-2.5">
               <IconAlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
-              <span>{errorMessage}</span>
+              <span>{forcePasswordError}</span>
             </div>
           )}
 
-          {/* Login Form */}
-          <form onSubmit={handleLoginSubmit} className="space-y-4">
+          <form onSubmit={handleForcePasswordSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Email Address
+                New Password (minimum 10 characters)
               </label>
               <div className="relative">
-                <IconMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <IconLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <input
-                  type="email"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
+                  type="password"
+                  value={forcedNewPassword}
+                  onChange={(e) => setForcedNewPassword(e.target.value)}
                   required
-                  placeholder="name@company.com"
+                  autoComplete="new-password"
+                  minLength={10}
+                  placeholder="••••••••••••"
                   className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-600 font-mono transition-colors"
                 />
               </div>
             </div>
 
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Password
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsResetMode(true);
-                    setResetStep('email');
-                    setResetEmail(loginEmail || '');
-                    setResetError(null);
-                  }}
-                  className="text-[11px] font-semibold text-teal-700 dark:text-teal-400 hover:text-teal-900 dark:hover:text-teal-300 transition-colors"
-                >
-                  Forgot Password?
-                </button>
-              </div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Confirm New Password
+              </label>
               <div className="relative">
                 <IconLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <input
                   type="password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
+                  value={forcedConfirmPassword}
+                  onChange={(e) => setForcedConfirmPassword(e.target.value)}
                   required
+                  autoComplete="new-password"
+                  minLength={10}
                   placeholder="••••••••••••"
                   className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-600 font-mono transition-colors"
                 />
@@ -243,51 +245,103 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={forcePasswordLoading}
               className="w-full mt-2 py-2.5 px-4 rounded-lg bg-teal-700 hover:bg-teal-800 font-bold text-xs text-white shadow-subtle transition-colors flex items-center justify-center gap-2"
             >
-              <span>{isLoading ? 'Authenticating Operator...' : 'Sign In to Workspace'}</span>
+              <span>{forcePasswordLoading ? 'Updating Password...' : 'Save Password & Continue'}</span>
               <IconArrowRight className="w-3.5 h-3.5" />
             </button>
           </form>
+        </div>
+      );
+    }
 
-          {/* Pre-Configured Accounts */}
-          <div className="mt-8 pt-6 border-t border-slate-200 dark:border-[#1E2636]">
-            <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-3 font-mono">
-              <IconKey className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-              <span>Pre-Configured System Accounts</span>
+    return (
+      <div className={isModal ? 'w-full' : 'bg-white dark:bg-[#131924] border border-slate-200 dark:border-[#1E2636] rounded-xl p-6 sm:p-8 shadow-card'}>
+        {!isResetMode ? (
+          <>
+            {/* Header */}
+            <div className="mb-6">
+              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20 mb-2">
+                <IconLock className="w-3 h-3" />
+                <span>Authorized Access Only</span>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Sign in to Invenaro</h2>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                Enter your system credentials. Accounts are provisioned by your organization's Administrator.
+              </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('company_admin')}
-                className="p-2.5 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] hover:border-teal-600 text-left transition-colors"
-              >
-                <div className="text-[11px] font-bold text-slate-900 dark:text-white">Company Admin</div>
-                <div className="text-[10px] text-slate-500 font-mono">Workspace Admin</div>
-              </button>
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="mb-5 p-3 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-300 text-xs flex items-start gap-2.5">
+                <IconAlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {/* Login Form */}
+            <form onSubmit={handleLoginSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <IconMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    required
+                    autoComplete="username"
+                    placeholder="name@company.com"
+                    className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-600 font-mono transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsResetMode(true);
+                      setResetStep('email');
+                      setResetEmail(loginEmail || '');
+                      setResetError(null);
+                    }}
+                    className="text-[11px] font-semibold text-teal-700 dark:text-teal-400 hover:text-teal-900 dark:hover:text-teal-300 transition-colors"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+                <div className="relative">
+                  <IconLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                  <input
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    placeholder="••••••••••••"
+                    className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-600 font-mono transition-colors"
+                  />
+                </div>
+              </div>
 
               <button
-                type="button"
-                onClick={() => handleQuickDemo('staff')}
-                className="p-2.5 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] hover:border-teal-600 text-left transition-colors"
+                type="submit"
+                disabled={isLoading}
+                className="w-full mt-2 py-2.5 px-4 rounded-lg bg-teal-700 hover:bg-teal-800 font-bold text-xs text-white shadow-subtle transition-colors flex items-center justify-center gap-2"
               >
-                <div className="text-[11px] font-bold text-slate-900 dark:text-white">Operations Staff</div>
-                <div className="text-[10px] text-slate-500 font-mono">Warehouse Op</div>
+                <span>{isLoading ? 'Authenticating Operator...' : 'Sign In to Workspace'}</span>
+                <IconArrowRight className="w-3.5 h-3.5" />
               </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('super_admin')}
-                className="p-2.5 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] hover:border-teal-600 text-left transition-colors"
-              >
-                <div className="text-[11px] font-bold text-slate-900 dark:text-white">Super Admin</div>
-                <div className="text-[10px] text-slate-500 font-mono">Platform Lead</div>
-              </button>
-            </div>
-          </div>
-        </>
+            </form>
+          </>
             ) : (
               /* --- COMPLETE FORGOT PASSWORD / RESET WIZARD --- */
               <div>
@@ -521,6 +575,7 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
             )}
     </div>
   );
+};
 
   if (isModal) {
     return (

@@ -892,7 +892,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Clear Movement Ledger for active tenant with preserved dual-authorization root audit record
   const clearLedger = async (options?: { requestedBy?: string; approvedBy?: string }) => {
     const clearedCount = ledger.length;
-    const approver = options?.approvedBy || 'Super Administrator (superadmin@invenza.internal)';
+    const approver = options?.approvedBy || 'System Administrator';
     const requester = options?.requestedBy || (user?.fullName ? `${user.fullName} (${user.email})` : 'Company Administrator');
     const nowStr = new Date().toISOString();
 

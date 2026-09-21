@@ -517,7 +517,7 @@ export const Profile: React.FC = () => {
             {/* Current Email Display */}
             <div className="mt-3 flex items-center gap-3">
               <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 px-4 py-2 text-sm font-mono text-slate-800 dark:text-slate-200">
-                {profile?.user.email || authUser?.email || 'user@invenza.internal'}
+                {profile?.user.email || authUser?.email || 'user@example.com'}
               </div>
               <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
                 <IconCheck className="h-3 w-3" />
@@ -873,7 +873,7 @@ export const Profile: React.FC = () => {
                       Registered Account Email
                     </h4>
                     <p className="text-xs font-mono text-slate-600 dark:text-slate-300">
-                      {profile?.user.email || authUser?.email || 'user@invenza.internal'}
+                      {profile?.user.email || authUser?.email || 'user@example.com'}
                     </p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">
                       To protect your account, password resets require a one-time verification code (OTP) sent to your registered email address.

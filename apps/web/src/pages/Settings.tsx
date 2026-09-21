@@ -361,7 +361,7 @@ export const Settings: React.FC = () => {
 
   // Webhooks simulated state
   const [webhooks, setWebhooks] = useState([
-    { id: '1', url: 'https://api.invenza.internal/webhooks/sap-stock-sync', events: ['ledger.in', 'ledger.out'] },
+    { id: '1', url: 'https://api.example.com/webhooks/sap-stock-sync', events: ['ledger.in', 'ledger.out'] },
   ]);
   const [newWebhookUrl, setNewWebhookUrl] = useState('');
 
@@ -1583,7 +1583,7 @@ export const Settings: React.FC = () => {
                 Account Password Verification
               </label>
               <span className="text-[11px] text-slate-500 font-mono">
-                {user?.email || 'admin@invenza.internal'}
+                {user?.email || 'Registered Email'}
               </span>
             </div>
             <div className="relative">
@@ -1662,7 +1662,7 @@ export const Settings: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between text-[11px] text-slate-500">
-              <span>A 6-digit verification code has been dispatched to <strong>{user?.email || 'admin@invenza.internal'}</strong></span>
+              <span>A 6-digit verification code has been dispatched to <strong>{user?.email || 'your registered email'}</strong></span>
               <span className="text-[10px] text-slate-400">Valid for 10 minutes</span>
             </div>
           </div>

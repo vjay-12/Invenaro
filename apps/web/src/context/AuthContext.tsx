@@ -20,6 +20,7 @@ export interface AuthUser {
   applyTaxToSalesOrders?: boolean;
   enabledModules?: string[];
   permissions?: string[];
+  mustChangePassword?: boolean;
 }
 
 interface AuthContextType {
@@ -38,8 +39,7 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   isCompanyAdmin: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  demoLogin: (type: 'super_admin' | 'company_admin' | 'staff') => Promise<void>;
+  login: (email: string, password: string) => Promise<any>;
   logout: () => void;
   updateUserLocal: (partial: Partial<AuthUser>) => void;
   switchTenant: (tenant: any) => void;
@@ -167,6 +167,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         taxLabel: data.tax_label || cfg.taxLabel,
         taxEngine: engine,
         applyTaxToSalesOrders: data.apply_tax_to_sales_orders !== undefined ? Boolean(data.apply_tax_to_sales_orders) : true,
+        mustChangePassword: Boolean(data.must_change_password),
         enabledModules: data.enabled_modules || [
           'products', 'locations', 'orders', 'transfers', 'adjustments', 'ledger', 'reports', 'storage', 'team'
         ],
@@ -178,22 +179,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(authUser);
       localStorage.setItem('invenza_token', authToken);
       localStorage.setItem('invenza_user', JSON.stringify(authUser));
+      return data;
     } catch (err) {
       throw err;
     }
   };
 
-  const demoLogin = async (type: 'super_admin' | 'company_admin' | 'staff' = 'super_admin') => {
-    if (type === 'super_admin') {
-      await login('superadmin@invenza.internal', 'superadmin2026');
-    } else if (type === 'company_admin') {
-      await login('admin@invenza.internal', 'adminpassword2026');
-    } else {
-      await login('staff@invenza.internal', 'staffpassword2026');
-    }
-  };
-
   const logout = () => {
+    api.logout().catch(() => {});
     setToken(null);
     setUser(null);
     localStorage.removeItem('invenza_token');
@@ -273,7 +266,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isCompanyAdmin,
         isLoading,
         login,
-        demoLogin,
         logout,
         updateUserLocal,
         switchTenant,

@@ -1,5 +1,4 @@
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -50,35 +49,7 @@ async function main() {
     },
   });
 
-  // 3. Admin & Staff Users
-  const passwordHash = await bcrypt.hash('admin123', 10);
-  const staffPasswordHash = await bcrypt.hash('staff123', 10);
-
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@invenaro.com' },
-    update: { password_hash: passwordHash },
-    create: {
-      email: 'admin@invenaro.com',
-      password_hash: passwordHash,
-      name: 'Business Administrator',
-      role: 'OWNER',
-      assigned_godown_id: mainGodown.id,
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: 'staff@invenaro.com' },
-    update: { password_hash: staffPasswordHash },
-    create: {
-      email: 'staff@invenaro.com',
-      password_hash: staffPasswordHash,
-      name: 'Warehouse Operator',
-      role: 'STAFF',
-      assigned_godown_id: southGodown.id,
-    },
-  });
-
-  // 4. Product Categories
+  // 3. Product Categories
   const categoryHardware = await prisma.productCategory.upsert({
     where: { name: 'Hardware & Fasteners' },
     update: {},
@@ -185,7 +156,7 @@ async function main() {
           reference_type: 'OPENING_STOCK',
           reference_id: product.id,
           notes: 'Initial opening stock balance',
-          created_by: admin.id,
+          created_by: 'SYSTEM_SEED',
         },
       });
     }

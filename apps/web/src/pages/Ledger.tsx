@@ -150,7 +150,7 @@ export const Ledger: React.FC = () => {
       return {
         role: 'System',
         name: 'System Automation',
-        email: 'system@invenza.internal',
+        email: 'system@invenaro.local',
         isSystem: true,
         badgeColor: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/80 dark:text-slate-400 dark:border-slate-700',
       };
@@ -170,7 +170,7 @@ export const Ledger: React.FC = () => {
       return {
         role: 'System',
         name: str.split('(')[0].trim() || 'System Automation',
-        email: str.includes('(') ? str.split('(')[1].replace(')', '').trim() : 'system@invenza.internal',
+        email: str.includes('(') ? str.split('(')[1].replace(')', '').trim() : 'system@invenaro.local',
         isSystem: true,
         badgeColor: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/80 dark:text-slate-400 dark:border-slate-700',
       };
@@ -924,7 +924,7 @@ export const Ledger: React.FC = () => {
                 <div>
                   <span className="text-[10px] text-slate-400 block">Operator Email</span>
                   <span className="font-mono text-slate-700 dark:text-slate-300">
-                    {selectedEventForDetail.operatorInfo.email || 'system@invenza.internal'}
+                    {selectedEventForDetail.operatorInfo.email || 'system@invenaro.local'}
                   </span>
                 </div>
                 <div className="sm:col-span-2 text-[11px] text-slate-500 dark:text-slate-400 mt-1">
