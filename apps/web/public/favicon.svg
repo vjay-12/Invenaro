@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <rect width="64" height="64" rx="14" fill="#0C1017"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" stroke="#1E2636" stroke-width="2"/>
+  <!-- Isometric Invenza 'I' Monogram in Industrial Petrol Teal -->
+  <path d="M32 12L49 21.8V42.2L32 52L15 42.2V21.8L32 12Z" fill="#131924" stroke="#0E7490" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M32 12V32M49 21.8L32 32M15 21.8L32 32" stroke="#0891B2" stroke-width="2" stroke-linecap="round"/>
+  <!-- Central Core Pillar -->
+  <rect x="28.5" y="26" width="7" height="15" rx="2" fill="#0E7490"/>
+  <circle cx="32" cy="20" r="3" fill="#22D3EE"/>
+</svg>

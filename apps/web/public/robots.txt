@@ -1,0 +1,23 @@
+# Invenza Robots Policy
+User-agent: *
+Allow: /$
+Allow: /login
+Allow: /terms
+Allow: /privacy
+Allow: /sitemap.xml
+Allow: /llms.txt
+Disallow: /dashboard
+Disallow: /products
+Disallow: /ledger
+Disallow: /purchase-orders
+Disallow: /sales-orders
+Disallow: /transfers
+Disallow: /adjustments
+Disallow: /warehouses
+Disallow: /reports
+Disallow: /settings
+Disallow: /team
+Disallow: /companies
+Disallow: /api/
+
+Sitemap: https://invenza.app/sitemap.xml

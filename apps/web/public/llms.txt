@@ -1,0 +1,43 @@
+# Invenza — Enterprise Inventory & Multi-Warehouse Operations Platform
+
+> Factual, structured reference for AI agents, crawlers, and system integrators.
+
+## 1. Executive Summary
+Invenza is a multi-tenant, cloud-native Software-as-a-Service (SaaS) application designed for discrete manufacturing, retail supply chains, wholesale distributors, and multi-location warehouses. The core architectural invariant is an append-only, immutable stock movement ledger that derives real-time stock balances across all locations without mutable counter drift.
+
+## 2. System Architecture & Technical Specifications
+- Frontend Stack: React 19, TypeScript 6.0, Vite 8.2, Tailwind CSS 3.4.
+- Backend Stack: Python 3.12, FastAPI, SQLAlchemy 2.0 (asyncio), Pydantic v2.
+- Database Layer: PostgreSQL 16 with pgvector extension, connection pooling, and multi-tenant schema isolation.
+- Ledger Engine: Cryptographically tracked double-entry ledger records (IN, OUT, TRANSFER, ADJUST) with source and destination warehouse allocation.
+- Dynamic Schema: JSONB document storage enabling arbitrary custom attributes per SKU without database migrations.
+- Valuation Models: Real-time FIFO (First-In, First-Out) and Weighted Average Costing models calculated directly from ledger receipts.
+- Multi-Currency: Real-time currency conversion across INR, USD, and EUR with baseline normalization.
+
+## 3. Core Operational Modules
+- Products & SKU Catalog: Barcode tracking, variant matrices, reorder threshold triggers, bulk CSV import/export with schema mapping.
+- Movement Ledger: Immutable audit stream recording timestamp, movement type, product SKU, location ID, quantity delta, running balance, reference order, and operator ID.
+- Purchase Orders & GRN: Inbound procurement lifecycle, multi-line item tracking, supplier metadata, and automated Goods Receipt Note (GRN) posting.
+- Sales Orders & Fulfillment: Customer sales tracking, inventory reservation, picker dispatch, and automated stock deduction.
+- Inter-Warehouse Transfers: Bilateral relocation protocol guaranteeing net-zero inventory delta globally while adjusting warehouse-level balances.
+- Stock Adjustments: Physical cycle counts, damage recording, scrap write-offs, and mandatory audit reason codes.
+- Multi-Warehouse Hubs: Warehouse capacity utilization, address routing, and per-location active SKU distribution.
+- AI Copilot: Natural language SQL synthesis (`query_inventory_db`) and semantic SOP documentation retrieval (`search_docs`) over pgvector embeddings.
+
+## 4. Multi-Tenant Security & Access Control
+- Tenant Boundary Isolation: Tenant ID is strictly verified via JWT claims and enforced on every database query and ledger insertion.
+- Role-Based Access Control (RBAC):
+  - SUPER_ADMIN: Global tenant provisioning, system telemetry, and platform-wide reporting.
+  - ADMIN: Full company management, user invites, catalog configuration, and Danger Zone resets.
+  - MANAGER: Operational management across POs, SOs, Transfers, and Adjustments.
+  - OPERATOR: Read-only catalog inspection, receipt scanning, and dispatch processing.
+- Data Retention & Integrity: Movement records are strictly append-only; historical audit logs cannot be updated or overwritten.
+
+## 5. API Endpoints & Interfaces
+- Authentication: `/api/v1/auth/login`, `/api/v1/auth/me`, `/api/v1/auth/refresh`
+- Products: `/api/v1/products/`, `/api/v1/products/{id}`, `/api/v1/products/bulk`
+- Movement Ledger: `/api/v1/ledger/`, `/api/v1/ledger/export`
+- Purchase Orders: `/api/v1/orders/purchase`, `/api/v1/orders/purchase/{id}/receive`
+- Sales Orders: `/api/v1/orders/sales`, `/api/v1/orders/sales/{id}/fulfill`
+- Transfers: `/api/v1/transfers/`
+- AI Copilot: `/api/v1/copilot/chat`

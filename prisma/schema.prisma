@@ -1,0 +1,448 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  password_hash      String
+  name               String
+  role               UserRole  @default(STAFF)
+  assigned_godown_id String?
+  assigned_godown    Godown?   @relation(fields: [assigned_godown_id], references: [id])
+  sessions           Session[]
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  token_hash String   @unique
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  expires_at DateTime
+  ip_address String?
+  user_agent String?
+  created_at DateTime @default(now())
+
+  @@index([user_id])
+  @@index([token_hash])
+  @@map("sessions")
+}
+
+model CompanySettings {
+  id          String   @id @default("default_settings")
+  company_name String  @default("My Business")
+  legal_name   String?
+  phone       String?
+  email       String?
+  address     String?
+  state_code  String?
+  gstin       String?
+  enable_gst  Boolean  @default(false)
+  logo_data   String?  @db.Text
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@map("company_settings")
+}
+
+model LicenseCache {
+  id              String   @id @default("active_license")
+  signed_token    String   @db.Text
+  customer_id     String
+  plan            String   @default("basic")
+  modules_json    String   @db.Text
+  expires_at      DateTime
+  domain          String?
+  last_checked_at DateTime @default(now())
+
+  @@map("license_cache")
+}
+
+model Godown {
+  id              String          @id @default(uuid())
+  name            String
+  code            String          @unique
+  address         String?
+  state_code      String?
+  gstin           String?
+  is_default      Boolean         @default(false)
+  is_active       Boolean         @default(true)
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  stock_balances  StockBalance[]
+  stock_movements StockMovement[]
+  sales_orders    SalesOrder[]
+  purchase_orders PurchaseOrder[]
+  users           User[]
+  transfers_out   StockTransfer[] @relation("SourceGodown")
+  transfers_in    StockTransfer[] @relation("DestGodown")
+  adjustments     StockAdjustment[]
+  invoices        Invoice[]
+
+  @@map("godowns")
+}
+
+model ProductCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  products    Product[]
+  created_at  DateTime  @default(now())
+
+  @@map("product_categories")
+}
+
+model Product {
+  id              String          @id @default(uuid())
+  sku             String          @unique
+  name            String
+  description     String?
+  category_id     String?
+  category        ProductCategory? @relation(fields: [category_id], references: [id])
+  unit            String          @default("PCS")
+  sale_price      Decimal         @default(0) @db.Decimal(12, 2)
+  purchase_price  Decimal         @default(0) @db.Decimal(12, 2)
+  hsn_code        String?
+  tax_rate        Decimal         @default(0) @db.Decimal(5, 2)
+  min_stock_level Decimal         @default(0) @db.Decimal(12, 2)
+  is_active       Boolean         @default(true)
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  stock_balances   StockBalance[]
+  stock_movements  StockMovement[]
+  sales_items      SalesOrderItem[]
+  purchase_items   PurchaseOrderItem[]
+  transfer_items   StockTransferItem[]
+  adjustment_items StockAdjustmentItem[]
+
+  @@map("products")
+}
+
+model StockBalance {
+  id               String   @id @default(uuid())
+  product_id       String
+  godown_id        String
+  current_quantity Decimal  @default(0) @db.Decimal(12, 2)
+  avg_cost         Decimal  @default(0) @db.Decimal(12, 2)
+  updated_at       DateTime @updatedAt
+
+  product          Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  godown           Godown   @relation(fields: [godown_id], references: [id], onDelete: Cascade)
+
+  @@unique([product_id, godown_id])
+  @@index([godown_id])
+  @@map("stock_balances")
+}
+
+enum MovementType {
+  PURCHASE_RECEIPT
+  SALES_DELIVERY
+  TRANSFER_OUT
+  TRANSFER_IN
+  ADJUSTMENT_ADD
+  ADJUSTMENT_REDUCE
+  RETURN_IN
+  RETURN_OUT
+}
+
+model StockMovement {
+  id             String       @id @default(uuid())
+  movement_type  MovementType
+  product_id     String
+  godown_id      String
+  quantity       Decimal      @db.Decimal(12, 2)
+  unit_cost      Decimal      @default(0) @db.Decimal(12, 2)
+  balance_after  Decimal      @db.Decimal(12, 2)
+  reference_type String
+  reference_id   String
+  notes          String?
+  created_at     DateTime     @default(now())
+  created_by     String?
+
+  product        Product      @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  godown         Godown       @relation(fields: [godown_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id, godown_id])
+  @@index([movement_type])
+  @@index([reference_id])
+  @@map("stock_movements")
+}
+
+model Customer {
+  id          String       @id @default(uuid())
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  state_code  String?
+  gstin       String?
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
+
+  sales_orders SalesOrder[]
+  invoices     Invoice[]
+  payments     Payment[]
+
+  @@map("customers")
+}
+
+model Supplier {
+  id              String          @id @default(uuid())
+  name            String
+  phone           String?
+  email           String?
+  address         String?
+  state_code      String?
+  gstin           String?
+  opening_balance Decimal         @default(0) @db.Decimal(12, 2)
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  purchase_orders PurchaseOrder[]
+  payments        Payment[]
+
+  @@map("suppliers")
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  DELIVERED
+  CANCELLED
+}
+
+model SalesOrder {
+  id             String           @id @default(uuid())
+  order_number   String           @unique
+  customer_id    String?
+  customer_name  String
+  customer_phone String?
+  customer_address String?
+  customer_gstin String?
+  godown_id      String
+  order_date     DateTime         @default(now())
+  status         OrderStatus      @default(CONFIRMED)
+  subtotal       Decimal          @default(0) @db.Decimal(12, 2)
+  tax_total      Decimal          @default(0) @db.Decimal(12, 2)
+  discount_total Decimal          @default(0) @db.Decimal(12, 2)
+  grand_total    Decimal          @default(0) @db.Decimal(12, 2)
+  notes          String?
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+  created_by     String?
+
+  customer       Customer?        @relation(fields: [customer_id], references: [id])
+  godown         Godown           @relation(fields: [godown_id], references: [id])
+  items          SalesOrderItem[]
+  invoices       Invoice[]
+
+  @@index([customer_id])
+  @@index([godown_id])
+  @@map("sales_orders")
+}
+
+model SalesOrderItem {
+  id             String     @id @default(uuid())
+  sales_order_id String
+  product_id     String
+  quantity       Decimal    @db.Decimal(12, 2)
+  unit_price     Decimal    @db.Decimal(12, 2)
+  discount       Decimal    @default(0) @db.Decimal(12, 2)
+  tax_rate       Decimal    @default(0) @db.Decimal(5, 2)
+  tax_amount     Decimal    @default(0) @db.Decimal(12, 2)
+  total          Decimal    @db.Decimal(12, 2)
+
+  sales_order    SalesOrder @relation(fields: [sales_order_id], references: [id], onDelete: Cascade)
+  product        Product    @relation(fields: [product_id], references: [id])
+
+  @@map("sales_order_items")
+}
+
+enum POStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id               String              @id @default(uuid())
+  po_number        String              @unique
+  supplier_id      String?
+  supplier_name    String
+  supplier_phone   String?
+  supplier_address String?
+  supplier_gstin   String?
+  godown_id        String
+  order_date       DateTime            @default(now())
+  expected_date    DateTime?
+  status           POStatus            @default(ORDERED)
+  subtotal         Decimal             @default(0) @db.Decimal(12, 2)
+  tax_total        Decimal             @default(0) @db.Decimal(12, 2)
+  grand_total      Decimal             @default(0) @db.Decimal(12, 2)
+  notes            String?
+  created_at       DateTime            @default(now())
+  updated_at       DateTime            @updatedAt
+  created_by       String?
+
+  supplier         Supplier?           @relation(fields: [supplier_id], references: [id])
+  godown           Godown              @relation(fields: [godown_id], references: [id])
+  items            PurchaseOrderItem[]
+
+  @@index([supplier_id])
+  @@index([godown_id])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id                String        @id @default(uuid())
+  purchase_order_id String
+  product_id        String
+  quantity          Decimal       @db.Decimal(12, 2)
+  unit_cost         Decimal       @db.Decimal(12, 2)
+  tax_rate          Decimal       @default(0) @db.Decimal(5, 2)
+  tax_amount        Decimal       @default(0) @db.Decimal(12, 2)
+  total             Decimal       @db.Decimal(12, 2)
+
+  purchase_order    PurchaseOrder @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
+  product           Product       @relation(fields: [product_id], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+enum TransferStatus {
+  DRAFT
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
+}
+
+model StockTransfer {
+  id                    String              @id @default(uuid())
+  transfer_number       String              @unique
+  source_godown_id      String
+  destination_godown_id String
+  status                TransferStatus      @default(DRAFT)
+  doc_type              String              @default("CHALLAN")
+  eway_bill_number      String?
+  vehicle_number        String?
+  transporter_name      String?
+  distance_km           Decimal?            @db.Decimal(8, 2)
+  notes                 String?
+  created_at            DateTime            @default(now())
+  updated_at            DateTime            @updatedAt
+  created_by            String?
+
+  source_godown         Godown              @relation("SourceGodown", fields: [source_godown_id], references: [id])
+  destination_godown    Godown              @relation("DestGodown", fields: [destination_godown_id], references: [id])
+  items                 StockTransferItem[]
+
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id          String        @id @default(uuid())
+  transfer_id String
+  product_id  String
+  quantity    Decimal       @db.Decimal(12, 2)
+  unit_cost   Decimal       @default(0) @db.Decimal(12, 2)
+
+  transfer    StockTransfer @relation(fields: [transfer_id], references: [id], onDelete: Cascade)
+  product     Product       @relation(fields: [product_id], references: [id])
+
+  @@map("stock_transfer_items")
+}
+
+model StockAdjustment {
+  id                String                @id @default(uuid())
+  adjustment_number String                @unique
+  godown_id         String
+  reason            String
+  status            String                @default("APPLIED")
+  notes             String?
+  created_at        DateTime              @default(now())
+  created_by        String?
+
+  godown            Godown                @relation(fields: [godown_id], references: [id])
+  items             StockAdjustmentItem[]
+
+  @@map("stock_adjustments")
+}
+
+model StockAdjustmentItem {
+  id            String          @id @default(uuid())
+  adjustment_id String
+  product_id    String
+  system_qty    Decimal         @db.Decimal(12, 2)
+  counted_qty   Decimal         @db.Decimal(12, 2)
+  diff_qty      Decimal         @db.Decimal(12, 2)
+  unit_cost     Decimal         @default(0) @db.Decimal(12, 2)
+
+  adjustment    StockAdjustment @relation(fields: [adjustment_id], references: [id], onDelete: Cascade)
+  product       Product         @relation(fields: [product_id], references: [id])
+
+  @@map("stock_adjustment_items")
+}
+
+model Invoice {
+  id                 String     @id @default(uuid())
+  invoice_number     String     @unique
+  invoice_type       String     @default("TAX_INVOICE")
+  reference_order_id String?
+  customer_id        String?
+  godown_id          String
+  invoice_date       DateTime   @default(now())
+  due_date           DateTime?
+  status             String     @default("UNPAID")
+  subtotal           Decimal    @default(0) @db.Decimal(12, 2)
+  tax_total          Decimal    @default(0) @db.Decimal(12, 2)
+  grand_total        Decimal    @default(0) @db.Decimal(12, 2)
+  paid_amount        Decimal    @default(0) @db.Decimal(12, 2)
+  balance_amount     Decimal    @default(0) @db.Decimal(12, 2)
+  created_at         DateTime   @default(now())
+
+  sales_order        SalesOrder? @relation(fields: [reference_order_id], references: [id])
+  customer           Customer?   @relation(fields: [customer_id], references: [id])
+  godown             Godown      @relation(fields: [godown_id], references: [id])
+  payments           Payment[]
+
+  @@map("invoices")
+}
+
+model Payment {
+  id               String    @id @default(uuid())
+  payment_number   String    @unique
+  invoice_id       String?
+  customer_id      String?
+  supplier_id      String?
+  payment_date     DateTime  @default(now())
+  amount           Decimal   @db.Decimal(12, 2)
+  payment_mode     String    @default("CASH")
+  reference_number String?
+  notes            String?
+  created_at       DateTime  @default(now())
+
+  invoice          Invoice?  @relation(fields: [invoice_id], references: [id])
+  customer         Customer? @relation(fields: [customer_id], references: [id])
+  supplier         Supplier? @relation(fields: [supplier_id], references: [id])
+
+  @@map("payments")
+}
