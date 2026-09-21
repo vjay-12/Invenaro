@@ -1,5 +1,7 @@
 import { PlanModules, PlanType } from '@invenaro/types';
 
+export * from './license-schema.js';
+
 export const DEFAULT_PLAN_MODULES: Record<PlanType, PlanModules> = {
   basic: {
     multi_godown: false,

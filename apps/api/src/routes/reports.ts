@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../db.js';
 import { authMiddleware } from '../middlewares/auth.js';
-import { LicenseService } from '../services/license.js';
+import { requireModule } from '../middlewares/entitlements.js';
 
 const router = Router();
 
@@ -93,13 +93,8 @@ router.get('/dashboard', async (req, res): Promise<void> => {
 });
 
 // Advanced Reports (Business plan)
-router.get('/advanced', async (req, res): Promise<void> => {
+router.get('/advanced', requireModule('reports_advanced'), async (req, res): Promise<void> => {
   try {
-    const hasAdvanced = await LicenseService.hasModule('reports_advanced');
-    if (!hasAdvanced) {
-      res.status(403).json({ error: 'Advanced reports pack requires Business plan' });
-      return;
-    }
 
     // Godown distribution
     const godowns = await prisma.godown.findMany({

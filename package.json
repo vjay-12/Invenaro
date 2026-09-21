@@ -15,9 +15,11 @@
     "dev:api": "npm run dev --workspace=@invenaro/api",
     "dev:web": "npm run dev --workspace=@invenaro/web",
     "build": "npm run build --workspaces --if-present",
-    "test": "tsx --test apps/api/src/test_invenaro.ts apps/api/src/test_ledger.ts",
+    "test": "tsx --test apps/api/src/test_invenaro.ts apps/api/src/test_ledger.ts apps/api/src/test_auth_hardening.ts apps/api/src/test_license_integration.ts",
     "db:generate": "prisma generate",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "admin:create": "tsx apps/api/src/scripts/createAdmin.ts",
+    "seed:dev": "tsx prisma/dev-seed.ts"
   },
   "devDependencies": {
     "concurrently": "^10.0.5",

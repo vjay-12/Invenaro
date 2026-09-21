@@ -15,16 +15,17 @@ enum UserRole {
 }
 
 model User {
-  id                 String    @id @default(uuid())
-  email              String    @unique
-  password_hash      String
-  name               String
-  role               UserRole  @default(STAFF)
-  assigned_godown_id String?
-  assigned_godown    Godown?   @relation(fields: [assigned_godown_id], references: [id])
-  sessions           Session[]
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
+  id                   String    @id @default(uuid())
+  email                String    @unique
+  password_hash        String
+  name                 String
+  role                 UserRole  @default(STAFF)
+  must_change_password Boolean   @default(false)
+  assigned_godown_id   String?
+  assigned_godown      Godown?   @relation(fields: [assigned_godown_id], references: [id])
+  sessions             Session[]
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
 
   @@map("users")
 }
@@ -44,32 +45,45 @@ model Session {
   @@map("sessions")
 }
 
+model LoginAttempt {
+  id           String   @id @default(uuid())
+  email        String
+  ip_address   String?
+  successful   Boolean  @default(false)
+  attempted_at DateTime @default(now())
+
+  @@index([email, attempted_at])
+  @@index([ip_address, attempted_at])
+  @@map("login_attempts")
+}
+
 model CompanySettings {
-  id          String   @id @default("default_settings")
-  company_name String  @default("My Business")
+  id           String   @id @default("default_settings")
+  company_name String   @default("My Business")
   legal_name   String?
-  phone       String?
-  email       String?
-  address     String?
-  state_code  String?
-  gstin       String?
-  enable_gst  Boolean  @default(false)
-  logo_data   String?  @db.Text
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  phone        String?
+  email        String?
+  address      String?
+  state_code   String?
+  gstin        String?
+  enable_gst   Boolean  @default(false)
+  logo_data    String?  @db.Text
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
 
   @@map("company_settings")
 }
 
 model LicenseCache {
-  id              String   @id @default("active_license")
-  signed_token    String   @db.Text
-  customer_id     String
-  plan            String   @default("basic")
-  modules_json    String   @db.Text
-  expires_at      DateTime
-  domain          String?
-  last_checked_at DateTime @default(now())
+  id            String   @id @default("active_license")
+  token         String   @db.Text
+  fetchedAt     DateTime @default(now())
+  tokenExp      DateTime
+  status        String   @default("unlicensed")
+  plan          String   @default("basic")
+  modules       Json
+  lastError     String?
+  lastAttemptAt DateTime @default(now())
 
   @@map("license_cache")
 }

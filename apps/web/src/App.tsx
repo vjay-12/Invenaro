@@ -2,7 +2,10 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { InventoryProvider } from './context/InventoryContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { LicenseProvider, useLicense } from './context/LicenseContext';
 import { EntitlementsProvider } from './context/EntitlementsContext';
+import { LicenseBanner } from './components/common/LicenseBanner';
+import { ModuleLockedScreen } from './components/common/ModuleLockedScreen';
 import { Sidebar, TabType } from './components/layout/Sidebar';
 import { Navbar } from './components/layout/Navbar';
 import { QuickSearchModal } from './components/layout/QuickSearchModal';
@@ -226,6 +229,7 @@ class AppErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundary
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, isLoading, isSuperAdmin, user } = useAuth();
+  const license = useLicense();
 
   // Initialize currentTab from browser location pathname
   const initialPath = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
@@ -423,6 +427,9 @@ const AppContent: React.FC = () => {
           </Suspense>
         );
       case 'ledger':
+        if (!license.hasModule('ledger_ui')) {
+          return <ModuleLockedScreen moduleName="Valuation & Costing Ledger" requiredPlan="Business" />;
+        }
         return (
           <Suspense fallback={<LedgerSkeleton />}>
             <Ledger />
@@ -451,6 +458,9 @@ const AppContent: React.FC = () => {
           </Suspense>
         );
       case 'invoices':
+        if (!license.hasModule('invoices_returns')) {
+          return <ModuleLockedScreen moduleName="Direct Tax Invoices & Returns" requiredPlan="Business" />;
+        }
         return (
           <Suspense fallback={<OrdersSkeleton />}>
             <SalesOrders
@@ -461,12 +471,18 @@ const AppContent: React.FC = () => {
           </Suspense>
         );
       case 'transfers':
+        if (!license.hasModule('transfers')) {
+          return <ModuleLockedScreen moduleName="Stock Transfers" requiredPlan="Business" />;
+        }
         return (
           <Suspense fallback={<OrdersSkeleton />}>
             <Transfers />
           </Suspense>
         );
       case 'adjustments':
+        if (!license.hasModule('stock_control')) {
+          return <ModuleLockedScreen moduleName="Stock Control & Adjustments" requiredPlan="Business" />;
+        }
         return (
           <Suspense fallback={<OrdersSkeleton />}>
             <Adjustments />
@@ -532,6 +548,7 @@ const AppContent: React.FC = () => {
 
       {/* Main Viewport (Navbar + Scrollable Content + Footer) - Starts horizontally AFTER Sidebar */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-[#F1F3F7] dark:bg-[#0C1017]">
+        <LicenseBanner />
         <Navbar
           currentTab={currentTab as TabType}
           onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
@@ -594,11 +611,13 @@ export function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <EntitlementsProvider>
-          <InventoryProvider>
-            <AppContent />
-          </InventoryProvider>
-        </EntitlementsProvider>
+        <LicenseProvider>
+          <EntitlementsProvider>
+            <InventoryProvider>
+              <AppContent />
+            </InventoryProvider>
+          </EntitlementsProvider>
+        </LicenseProvider>
       </AuthProvider>
     </ThemeProvider>
   );

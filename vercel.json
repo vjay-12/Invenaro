@@ -1,9 +1,15 @@
 {
   "version": 2,
+  "crons": [
+    {
+      "path": "/api/cron/license-refresh",
+      "schedule": "0 2 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/src/server.ts"
+      "destination": "/apps/api/src/server.ts"
     },
     {
       "source": "/(.*)",

@@ -72,16 +72,44 @@ export const api = {
       const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(credentials),
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Login failed. Please check your credentials.');
+        throw new Error(errorData.error || errorData.detail || 'Invalid email or password');
       }
       return await res.json();
     } catch (err: any) {
       throw err;
     }
+  },
+
+  logout: async () => {
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {}
+  },
+
+  changePassword: async (data: { currentPassword?: string; newPassword: string }) => {
+    const res = await fetch(`${API_BASE_URL}/auth/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.detail || 'Failed to update password');
+    }
+    return await res.json();
+  },
+
+  getLicenseStatus: async () => {
+    return await fetchWithFallback<any>('/license/status');
   },
 
   forgotPassword: async (email: string) => {
