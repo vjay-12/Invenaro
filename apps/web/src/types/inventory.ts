@@ -104,6 +104,7 @@ export interface Customer {
   id: string;
   tenantId?: string;
   legalName: string;
+  name?: string;
   email?: string;
   phone?: string;
   gstin?: string;

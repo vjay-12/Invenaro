@@ -7,6 +7,15 @@ const router = Router();
 
 router.use(authMiddleware);
 
+const mapCustomer = (c: any) => ({
+  ...c,
+  legal_name: c.name,
+  billing_address: c.address,
+  shipping_address: c.address,
+  state: c.state_code,
+  billing_state_code: c.state_code,
+});
+
 router.get('/', async (req, res): Promise<void> => {
   try {
     const customers = await prisma.customer.findMany({
@@ -17,7 +26,7 @@ router.get('/', async (req, res): Promise<void> => {
         },
       },
     });
-    res.json(customers);
+    res.json(customers.map(mapCustomer));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch customers' });
   }
@@ -25,7 +34,13 @@ router.get('/', async (req, res): Promise<void> => {
 
 router.post('/', async (req, res): Promise<void> => {
   try {
-    const parse = customerSchema.safeParse(req.body);
+    const payload = {
+      ...req.body,
+      name: req.body.name || req.body.legal_name,
+      address: req.body.address || req.body.billing_address || req.body.shipping_address,
+      state_code: req.body.state_code || req.body.billing_state_code,
+    };
+    const parse = customerSchema.safeParse(payload);
     if (!parse.success) {
       res.status(400).json({ error: parse.error.errors[0]?.message || 'Invalid customer data' });
       return;
@@ -34,9 +49,48 @@ router.post('/', async (req, res): Promise<void> => {
     const customer = await prisma.customer.create({
       data: parse.data,
     });
-    res.status(201).json(customer);
+    res.status(201).json(mapCustomer(customer));
   } catch (err) {
     res.status(500).json({ error: 'Failed to create customer' });
+  }
+});
+
+router.put('/:id', async (req, res): Promise<void> => {
+  try {
+    const payload = {
+      ...req.body,
+      name: req.body.name || req.body.legal_name,
+      address: req.body.address || req.body.billing_address || req.body.shipping_address,
+      state_code: req.body.state_code || req.body.billing_state_code,
+    };
+    const parse = customerSchema.partial().safeParse(payload);
+    if (!parse.success) {
+      res.status(400).json({ error: parse.error.errors[0]?.message || 'Invalid customer data' });
+      return;
+    }
+
+    const customer = await prisma.customer.update({
+      where: { id: req.params.id },
+      data: parse.data,
+    });
+    res.json(mapCustomer(customer));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update customer' });
+  }
+});
+
+router.post('/:id/archive', async (req, res): Promise<void> => {
+  try {
+    const customer = await prisma.customer.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!customer) {
+      res.status(404).json({ error: 'Customer not found' });
+      return;
+    }
+    res.json({ message: 'Customer archived', customer: mapCustomer(customer) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to archive customer' });
   }
 });
 
@@ -55,7 +109,7 @@ router.get('/:id', async (req, res): Promise<void> => {
       res.status(404).json({ error: 'Customer not found' });
       return;
     }
-    res.json(customer);
+    res.json(mapCustomer(customer));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch customer' });
   }

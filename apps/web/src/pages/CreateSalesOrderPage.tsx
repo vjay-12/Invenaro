@@ -140,7 +140,7 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
               .map((c: any) => ({
                 id: c.id,
                 tenantId: c.tenant_id,
-                legalName: c.legal_name,
+                legalName: c.legal_name || c.name || '',
                 email: c.email,
                 phone: c.phone,
                 gstin: c.gstin,
@@ -270,7 +270,7 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
 
       const newCustomer: Customer = {
         id: res.id,
-        legalName: res.legal_name,
+        legalName: res.legal_name || res.name || '',
         email: res.email,
         phone: res.phone,
         gstin: res.gstin,
@@ -307,7 +307,7 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
     if (!q) return customers;
     return customers.filter(
       (c) =>
-        c.legalName.toLowerCase().includes(q) ||
+        (c.legalName || c.name || '').toLowerCase().includes(q) ||
         (c.gstin && c.gstin.toLowerCase().includes(q)) ||
         (c.email && c.email.toLowerCase().includes(q))
     );

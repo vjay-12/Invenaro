@@ -146,7 +146,7 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
           data.map((c: any) => ({
             id: c.id,
             tenantId: c.tenant_id,
-            legalName: c.legal_name,
+            legalName: c.legal_name || c.name || '',
             email: c.email,
             phone: c.phone,
             gstin: c.gstin,
@@ -190,7 +190,7 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
       if (!customerSearch.trim()) return true;
       const q = customerSearch.toLowerCase();
       return (
-        c.legalName.toLowerCase().includes(q) ||
+        (c.legalName || c.name || '').toLowerCase().includes(q) ||
         (c.email && c.email.toLowerCase().includes(q)) ||
         (c.phone && c.phone.toLowerCase().includes(q)) ||
         (c.gstin && c.gstin.toLowerCase().includes(q)) ||
@@ -871,11 +871,11 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
                       <td className="py-2.5 px-3 overflow-hidden align-middle">
                         <div className="flex items-center gap-2 min-w-0">
                           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-teal-500/10 text-teal-700 dark:text-teal-400 font-bold text-xs border border-teal-500/20">
-                            {c.legalName.charAt(0).toUpperCase()}
+                            {(c.legalName || c.name || 'C').charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="font-bold text-slate-900 dark:text-white truncate group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" title={c.legalName}>
-                              {c.legalName}
+                            <div className="font-bold text-slate-900 dark:text-white truncate group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" title={c.legalName || c.name}>
+                              {c.legalName || c.name}
                             </div>
                             <div className="text-[10px] text-slate-400 font-mono truncate">
                               ID: {c.id.substring(0, 8)}
