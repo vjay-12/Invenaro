@@ -3,7 +3,6 @@ import { InventoryProvider } from './context/InventoryContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LicenseProvider, useLicense } from './context/LicenseContext';
-import { EntitlementsProvider } from './context/EntitlementsContext';
 import { LicenseBanner } from './components/common/LicenseBanner';
 import { ModuleLockedScreen } from './components/common/ModuleLockedScreen';
 import { Sidebar, TabType } from './components/layout/Sidebar';
@@ -612,11 +611,9 @@ export function App() {
     <ThemeProvider>
       <AuthProvider>
         <LicenseProvider>
-          <EntitlementsProvider>
-            <InventoryProvider>
-              <AppContent />
-            </InventoryProvider>
-          </EntitlementsProvider>
+          <InventoryProvider>
+            <AppContent />
+          </InventoryProvider>
         </LicenseProvider>
       </AuthProvider>
     </ThemeProvider>

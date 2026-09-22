@@ -21,7 +21,7 @@ import {
 } from '../icons';
 import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
-import { useEntitlements } from '../../context/EntitlementsContext';
+import { useLicense } from '../../context/LicenseContext';
 import { api } from '../../services/api';
 
 export type TabType =
@@ -65,7 +65,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { products, purchaseOrders, salesOrders, taxConfig } = useInventory();
   const { user, isSuperAdmin, isCompanyAdmin } = useAuth();
-  const { plan, hasModule, isBasic, isBusiness, isEnterprise, setPlanPreview } = useEntitlements();
+  const { plan, hasModule } = useLicense();
+  const isBasic = plan === 'basic';
 
   const [newLeadsCount, setNewLeadsCount] = useState<number>(0);
   const [pendingSafeguardsCount, setPendingSafeguardsCount] = useState<number>(0);
@@ -267,7 +268,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (onCloseMobile) onCloseMobile();
   };
 
-  const planBadgeClasses = {
+  const planBadgeClasses: Record<string, string> = {
     basic: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
     business: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30',
     enterprise: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30',
@@ -307,20 +308,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {/* Plan Switcher / Preview Pill */}
+        {/* Active Plan Read-Only Badge */}
         <div className="mt-2.5 flex items-center justify-between bg-white/70 dark:bg-slate-900/80 p-1.5 rounded-lg border border-slate-200 dark:border-slate-800">
           <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-semibold pl-1">
             Active Plan:
           </span>
-          <select
-            value={plan}
-            onChange={(e) => setPlanPreview(e.target.value as any)}
-            className={`text-[11px] font-mono font-bold uppercase py-0.5 px-2 rounded border cursor-pointer focus:outline-none ${planBadgeClasses[plan]}`}
+          <span
+            className={`text-[11px] font-mono font-bold uppercase py-0.5 px-2 rounded border ${
+              planBadgeClasses[plan] || planBadgeClasses.business
+            }`}
           >
-            <option value="basic">🟢 Basic</option>
-            <option value="business">🔵 Business</option>
-            <option value="enterprise">🟣 Enterprise</option>
-          </select>
+            {plan}
+          </span>
         </div>
       </div>
 

@@ -29,7 +29,7 @@ export const ModuleLockedScreen: React.FC<ModuleLockedScreenProps> = ({
 
       <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-6">
         {description ||
-          `This feature requires the ${requiredPlan} subscription tier. Upgrade your Invenaro subscription from your customer portal to enable this capability.`}
+          `This feature requires the ${requiredPlan} subscription tier. Contact sales or support to request an upgrade to your Invenaro subscription.`}
       </p>
 
       <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 w-full text-left space-y-2 mb-6">
@@ -46,8 +46,9 @@ export const ModuleLockedScreen: React.FC<ModuleLockedScreenProps> = ({
       <a
         href="mailto:billing@invenaro.com?subject=Invenaro%20Subscription%20Upgrade"
         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition-colors shadow-subtle"
+        title="Send an email to billing@invenaro.com to request an upgrade"
       >
-        <span>Upgrade Subscription</span>
+        <span>Request Subscription Upgrade</span>
         <IconArrowRight className="w-4 h-4" />
       </a>
     </div>
