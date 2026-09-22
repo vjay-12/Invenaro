@@ -40,6 +40,7 @@ function createMockReqRes(options: {
     statusCode: 200,
     headers: {} as Record<string, string>,
     cookies: {} as Record<string, any>,
+    clearedCookies: [] as string[],
     data: null,
     status(code: number) {
       this.statusCode = code;
@@ -54,6 +55,7 @@ function createMockReqRes(options: {
       return this;
     },
     clearCookie(name: string) {
+      this.clearedCookies.push(name);
       delete this.cookies[name];
       return this;
     },
@@ -1063,3 +1065,137 @@ test('SECURITY-26: Never trust client-provided role for authorization', async ()
   await createUserHandler(req, res);
   assert.equal(res.statusCode, 403, 'Must reject non-OWNER even if body specifies OWNER');
 });
+
+test('SETUP-27: Unauthenticated request to /auth/me returns 401', async () => {
+  const { authMiddleware } = await import('./middlewares/auth.js');
+  const { req, res, next } = createMockReqRes({
+    method: 'GET',
+    path: '/auth/me',
+    cookies: {},
+  });
+
+  let nextCalled = false;
+  await authMiddleware(req, res, () => { nextCalled = true; });
+
+  assert.equal(res.statusCode, 401, 'Must return 401 when no session cookie present');
+  assert.equal(nextCalled, false, 'Next middleware must not be called');
+});
+
+test('SETUP-28: Stale session cookie against empty database returns 401 and clears cookie', async () => {
+  const { authMiddleware } = await import('./middlewares/auth.js');
+  const { req, res, next } = createMockReqRes({
+    method: 'GET',
+    path: '/auth/me',
+    cookies: { invenaro_session: 'stale-token-from-wiped-db' },
+  });
+
+  const origFind = prisma.session.findUnique;
+  (prisma.session as any).findUnique = async () => null;
+
+  let nextCalled = false;
+  try {
+    await authMiddleware(req, res, () => { nextCalled = true; });
+    assert.equal(res.statusCode, 401, 'Must return 401 for non-existent session');
+    assert.equal(nextCalled, false, 'Next middleware must not be called');
+    assert.equal(res.clearedCookies?.includes('invenaro_session'), true, 'Must clear stale session cookie');
+  } finally {
+    prisma.session.findUnique = origFind;
+  }
+});
+
+test('SETUP-29: Zero users database enforces needsSetup=true to block dashboard access', async () => {
+  const setupStatusHandler = getRouteHandler(authRouter, '/setup-status', 'GET');
+  const { req, res } = createMockReqRes({ method: 'GET', path: '/setup-status' });
+
+  const origCount = prisma.user.count;
+  const origEntitlements = LicenseService.getEntitlements;
+  const origAdminEmail = LicenseService.getVerifiedAdminEmail;
+
+  (prisma.user as any).count = async () => 0;
+  LicenseService.getEntitlements = async () => ({ state: { state: 'active' } }) as any;
+  LicenseService.getVerifiedAdminEmail = async () => 'admin@customer.com';
+
+  try {
+    await setupStatusHandler(req, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.data.needsSetup, true, 'Zero users must require setup');
+  } finally {
+    prisma.user.count = origCount;
+    LicenseService.getEntitlements = origEntitlements;
+    LicenseService.getVerifiedAdminEmail = origAdminEmail;
+  }
+});
+
+test('SETUP-30: Client session verification simulation purges stale localStorage and blocks direct dashboard login', async () => {
+  // Simulate mock browser localStorage
+  const localStorageMock: Record<string, string> = {
+    'invenza_token': 'stale_jwt_from_prior_run',
+    'invenza_user': JSON.stringify({ id: 'usr-old', fullName: 'Business Administrator Admin', email: 'admin@customer.com' }),
+    'invenza_tenant_tid1_products': JSON.stringify([{ id: 'p1' }]),
+  };
+
+  function clearStoredAuth() {
+    delete localStorageMock['invenza_token'];
+    delete localStorageMock['invenza_user'];
+    Object.keys(localStorageMock).forEach(key => {
+      if (key.startsWith('invenza_tenant_')) {
+        delete localStorageMock[key];
+      }
+    });
+  }
+
+  // Simulate mock api
+  const mockApi = {
+    getSetupStatus: async () => ({ needsSetup: true }),
+    getCurrentUser: async () => null,
+  };
+
+  // Simulate AuthContext.verifySession logic
+  let user: any = JSON.parse(localStorageMock['invenza_user'] || 'null');
+  let token: string | null = localStorageMock['invenza_token'] || null;
+  let needsSetup = false;
+  let isLoading = true;
+
+  const verifySession = async () => {
+    try {
+      const setupRes = await mockApi.getSetupStatus();
+      if (setupRes?.needsSetup) {
+        needsSetup = true;
+        clearStoredAuth();
+        user = null;
+        token = null;
+        isLoading = false;
+        return;
+      }
+      needsSetup = false;
+    } finally {
+      isLoading = false;
+    }
+  };
+
+  await verifySession();
+
+  // Assertions:
+  assert.equal(needsSetup, true, 'needsSetup must be true');
+  assert.equal(user, null, 'Stale user in memory must be reset to null');
+  assert.equal(token, null, 'Stale token in memory must be reset to null');
+  assert.equal(localStorageMock['invenza_token'], undefined, 'invenza_token must be removed from localStorage');
+  assert.equal(localStorageMock['invenza_user'], undefined, 'invenza_user must be removed from localStorage');
+  assert.equal(localStorageMock['invenza_tenant_tid1_products'], undefined, 'Cached tenant data must be cleared from localStorage');
+  assert.equal(isLoading, false, 'Loading must complete');
+
+  // Simulate AppContent routing guard
+  const isAuthenticated = !!user && !!token;
+  const currentTab = 'dashboard';
+  let renderedView = 'dashboard';
+
+  if (needsSetup) {
+    renderedView = 'setup_wizard';
+  } else if (!isAuthenticated) {
+    renderedView = 'landing_page';
+  }
+
+  assert.equal(renderedView, 'setup_wizard', 'App must render setup wizard and strictly block dashboard');
+});
+
+

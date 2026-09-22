@@ -15,7 +15,6 @@ import { InvenzaChatbot } from './components/chat/InvenzaChatbot';
 import { Login } from './pages/Login';
 import { LandingPage } from './pages/LandingPage';
 import { JsonLd } from './components/common/JsonLd';
-import { api } from './services/api';
 import {
   DashboardSkeleton,
   ProductsSkeleton,
@@ -230,7 +229,7 @@ class AppErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundary
 }
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, isLoading, isSuperAdmin, user } = useAuth();
+  const { isAuthenticated, isLoading, isSuperAdmin, user, needsSetup } = useAuth();
   const license = useLicense();
 
   // Initialize currentTab from browser location pathname
@@ -250,25 +249,6 @@ const AppContent: React.FC = () => {
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [needsSetup, setNeedsSetup] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    if (!isAuthenticated) {
-      api.getSetupStatus()
-        .then((res) => {
-          if (active && res?.needsSetup) {
-            setNeedsSetup(true);
-          }
-        })
-        .catch(() => {});
-    } else {
-      setNeedsSetup(false);
-    }
-    return () => {
-      active = false;
-    };
-  }, [isAuthenticated]);
 
   // Sync tab changes to browser URL and history
   const navigateTo = (tab: TabType | '404', params?: Record<string, string>, replace: boolean = false) => {
@@ -304,8 +284,16 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Sync tab with user role upon login / logout
+  // Sync tab with user role upon login / logout / setup required
   useEffect(() => {
+    if (needsSetup) {
+      const path = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
+      if (path !== '/login') {
+        window.history.replaceState({ tab: 'login' }, '', '/login');
+      }
+      return;
+    }
+
     if (isAuthenticated) {
       if (isSuperAdmin && (currentTab === 'home' || currentTab === 'dashboard')) {
         navigateTo('companies');
@@ -316,7 +304,7 @@ const AppContent: React.FC = () => {
       // For unauthenticated visitors, ensure URL path is cleanly /home (or /terms, /privacy, /login)
       const publicPaths = ['/home', '/terms', '/privacy', '/login'];
       const path = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
-      if (!publicPaths.includes(path) && !needsSetup) {
+      if (!publicPaths.includes(path)) {
         window.history.replaceState({ tab: 'home' }, '', '/home');
         setCurrentTab('home');
       }
@@ -350,9 +338,16 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // If not logged in, allow public routes or show Login portal / setup wizard
+  // CRITICAL FIRST-RUN SETUP ENFORCEMENT:
+  // If first-run admin setup is required, UNCONDITIONALLY render the setup wizard.
+  // Neither the dashboard nor any other protected or public view is accessible.
+  if (needsSetup) {
+    return <Login onNavigate={(t) => navigateTo(t as any)} />;
+  }
+
+  // If not logged in, allow public routes or show Login portal
   if (!isAuthenticated) {
-    if (needsSetup || currentTab === 'login') {
+    if (currentTab === 'login') {
       return <Login onNavigate={(t) => navigateTo(t as any)} />;
     }
 

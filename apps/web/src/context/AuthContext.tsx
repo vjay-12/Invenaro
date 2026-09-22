@@ -39,11 +39,28 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   isCompanyAdmin: boolean;
   isLoading: boolean;
+  needsSetup: boolean;
+  checkSetupStatus: () => Promise<boolean>;
   login: (email: string, password: string) => Promise<any>;
   setupAdmin: (data: { name: string; email: string; password: string; confirmPassword: string }) => Promise<any>;
   logout: () => void;
   updateUserLocal: (partial: Partial<AuthUser>) => void;
   switchTenant: (tenant: any) => void;
+}
+
+function clearStoredAuth() {
+  localStorage.removeItem('invenza_token');
+  localStorage.removeItem('invenza_user');
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('invenza_tenant_') || key.startsWith('invenza_user') || key.startsWith('invenza_token'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {}
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -80,58 +97,95 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return localStorage.getItem('invenza_token') || null;
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [needsSetup, setNeedsSetup] = useState<boolean>(false);
 
   // Authoritative dynamic tax config derived from org's locked identity
   const taxConfig = useMemo<TaxConfig>(() => {
     return getTaxConfig(user?.countryCode, user?.state, user?.taxRate, user?.currencyCode, user?.taxEngine);
   }, [user?.countryCode, user?.state, user?.taxRate, user?.currencyCode, user?.taxEngine]);
 
+  const checkSetupStatus = async (): Promise<boolean> => {
+    try {
+      const res = await api.getSetupStatus();
+      const needed = Boolean(res?.needsSetup);
+      setNeedsSetup(needed);
+      return needed;
+    } catch {
+      setNeedsSetup(false);
+      return false;
+    }
+  };
+
   useEffect(() => {
     // Validate or verify session on mount
     const verifySession = async () => {
-      if (token) {
-        try {
+      try {
+        // Step 1: Check if first-run admin setup is required (zero users in database)
+        const setupRes = await api.getSetupStatus();
+        if (setupRes?.needsSetup) {
+          setNeedsSetup(true);
+          // If setup is needed, any token or user in localStorage is a stale ghost from a wiped database!
+          clearStoredAuth();
+          setUser(null);
+          setToken(null);
+          setIsLoading(false);
+          return;
+        }
+        setNeedsSetup(false);
+
+        // Step 2: If a token exists, verify it with the backend /auth/me
+        if (token) {
           const profile = await api.getCurrentUser();
-          if (profile && profile.email) {
-            let country = profile.country_code || user?.countryCode;
-            const cur = profile.currency_code || user?.currencyCode;
+          const userData = profile?.user || (profile?.email ? profile : null);
+          if (userData && userData.email) {
+            let country = profile?.country_code || userData.country_code || user?.countryCode;
+            const cur = profile?.currency_code || userData.currency_code || user?.currencyCode;
             if (!country || country === 'IN') {
               if (cur === 'EUR') country = 'DE';
               else if (cur === 'USD') country = 'US';
               else country = country || 'IN';
             }
-            const state = profile.state || user?.state;
-            const engine = profile.tax_engine || user?.taxEngine || (cur === 'EUR' ? 'VAT' : cur === 'USD' ? 'SALES_TAX' : (profile.tax_type as TaxRegime)) || 'GST';
-            const cfg = getTaxConfig(country, state, profile.tax_rate, cur, engine);
+            const state = profile?.state || userData.state || user?.state;
+            const engine = profile?.tax_engine || userData.tax_engine || user?.taxEngine || (cur === 'EUR' ? 'VAT' : cur === 'USD' ? 'SALES_TAX' : (profile?.tax_type as TaxRegime)) || 'GST';
+            const cfg = getTaxConfig(country, state, profile?.tax_rate ?? userData.tax_rate, cur, engine);
 
             const updatedUser: AuthUser = {
-              id: profile.id || user?.id || 'usr-01',
-              email: profile.email,
-              fullName: profile.full_name || user?.fullName || 'User',
-              role: profile.role || user?.role || 'staff',
-              tenantId: profile.tenant_id || user?.tenantId,
-              companyName: profile.company_name || user?.companyName,
-              industry: profile.industry || user?.industry,
+              id: userData.id || user?.id || 'usr-01',
+              email: userData.email,
+              fullName: userData.name || userData.full_name || user?.fullName || 'User',
+              role: userData.role || user?.role || 'staff',
+              tenantId: userData.tenant_id || user?.tenantId,
+              companyName: profile?.company_name || userData.company_name || user?.companyName,
+              industry: profile?.industry || userData.industry || user?.industry,
               currencyCode: cur || cfg.currencyCode,
               countryCode: country,
               state: state,
-              taxType: (profile.tax_type as TaxRegime) || user?.taxType || cfg.taxType,
-              taxRate: profile.tax_rate !== undefined && profile.tax_rate !== null ? Number(profile.tax_rate) : (user?.taxRate ?? cfg.standardRate),
-              taxLabel: profile.tax_label || user?.taxLabel || cfg.taxLabel,
+              taxType: (profile?.tax_type as TaxRegime) || user?.taxType || cfg.taxType,
+              taxRate: (profile?.tax_rate !== undefined && profile?.tax_rate !== null) ? Number(profile.tax_rate) : (user?.taxRate ?? cfg.standardRate),
+              taxLabel: profile?.tax_label || user?.taxLabel || cfg.taxLabel,
               taxEngine: engine,
-              applyTaxToSalesOrders: profile.apply_tax_to_sales_orders !== undefined ? Boolean(profile.apply_tax_to_sales_orders) : (user?.applyTaxToSalesOrders ?? true),
-              enabledModules: profile.enabled_modules || user?.enabledModules,
-              permissions: profile.permissions || user?.permissions,
+              applyTaxToSalesOrders: profile?.apply_tax_to_sales_orders !== undefined ? Boolean(profile.apply_tax_to_sales_orders) : (user?.applyTaxToSalesOrders ?? true),
+              enabledModules: profile?.enabled_modules || user?.enabledModules,
+              permissions: profile?.permissions || user?.permissions,
             };
             (updatedUser as any).tax_engine = engine;
             setUser(updatedUser);
             localStorage.setItem('invenza_user', JSON.stringify(updatedUser));
+          } else {
+            // Backend rejected token or user does not exist in DB (e.g. 401 Unauthorized)
+            clearStoredAuth();
+            setUser(null);
+            setToken(null);
           }
-        } catch (err) {
-          console.warn('Session verification fallback to stored user:', err);
         }
+      } catch (err) {
+        console.warn('Session verification failed, resetting auth state:', err);
+        clearStoredAuth();
+        setUser(null);
+        setToken(null);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     verifySession();
@@ -178,6 +232,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setToken(authToken);
       setUser(authUser);
+      setNeedsSetup(false);
       localStorage.setItem('invenza_token', authToken);
       localStorage.setItem('invenza_user', JSON.stringify(authUser));
       return data;
@@ -221,6 +276,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setToken(authToken);
       setUser(authUser);
+      setNeedsSetup(false);
       localStorage.setItem('invenza_token', authToken);
       localStorage.setItem('invenza_user', JSON.stringify(authUser));
       return data;
@@ -231,10 +287,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     api.logout().catch(() => {});
+    clearStoredAuth();
     setToken(null);
     setUser(null);
-    localStorage.removeItem('invenza_token');
-    localStorage.removeItem('invenza_user');
+    checkSetupStatus().catch(() => {});
   };
 
   const updateUserLocal = (partial: Partial<AuthUser>) => {
@@ -309,6 +365,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isSuperAdmin,
         isCompanyAdmin,
         isLoading,
+        needsSetup,
+        checkSetupStatus,
         login,
         setupAdmin,
         logout,

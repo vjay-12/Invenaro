@@ -27,15 +27,15 @@ export interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNavigate }) => {
-  const { login, setupAdmin } = useAuth();
+  const { login, setupAdmin, needsSetup: authNeedsSetup, checkSetupStatus } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Setup wizard state
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [isCheckingSetup, setIsCheckingSetup] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(authNeedsSetup);
+  const [isCheckingSetup, setIsCheckingSetup] = useState(!authNeedsSetup);
   const [setupName, setSetupName] = useState('');
   const [setupEmail, setSetupEmail] = useState('');
   const [setupPassword, setSetupPassword] = useState('');
@@ -43,13 +43,18 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
 
+  // Synchronize with auth context
+  useEffect(() => {
+    setNeedsSetup(authNeedsSetup);
+  }, [authNeedsSetup]);
+
   // Check setup status on mount
   useEffect(() => {
     let active = true;
-    api.getSetupStatus()
-      .then((res) => {
+    checkSetupStatus()
+      .then((needed) => {
         if (active) {
-          setNeedsSetup(Boolean(res?.needsSetup));
+          setNeedsSetup(needed);
           setIsCheckingSetup(false);
         }
       })
@@ -61,7 +66,7 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
     return () => {
       active = false;
     };
-  }, []);
+  }, [checkSetupStatus]);
 
   // Sign in form state
   const [loginEmail, setLoginEmail] = useState('');
