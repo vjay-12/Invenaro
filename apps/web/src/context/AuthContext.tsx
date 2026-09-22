@@ -40,6 +40,7 @@ interface AuthContextType {
   isCompanyAdmin: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<any>;
+  setupAdmin: (data: { name: string; email: string; password: string; confirmPassword: string }) => Promise<any>;
   logout: () => void;
   updateUserLocal: (partial: Partial<AuthUser>) => void;
   switchTenant: (tenant: any) => void;
@@ -185,6 +186,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const setupAdmin = async (setupData: { name: string; email: string; password: string; confirmPassword: string }) => {
+    try {
+      const data = await api.setupAdmin(setupData);
+      const authToken = data.access_token;
+      const cur = data.currency_code || 'INR';
+      const country = data.country_code || 'IN';
+      const engine = data.tax_engine || 'GST';
+      const cfg = getTaxConfig(country, undefined, undefined, cur, engine);
+
+      const authUser: AuthUser = {
+        id: data.user?.id || 'usr-01',
+        email: setupData.email.trim().toLowerCase(),
+        fullName: data.user?.name || data.full_name || setupData.name,
+        role: 'admin',
+        tenantId: data.tenant_id,
+        companyName: data.company_name || 'Invenaro Operations',
+        industry: 'General',
+        currencyCode: cur,
+        countryCode: country,
+        state: 'Karnataka',
+        taxType: cfg.taxType,
+        taxRate: cfg.standardRate,
+        taxLabel: cfg.taxLabel,
+        taxEngine: engine,
+        applyTaxToSalesOrders: true,
+        mustChangePassword: false,
+        enabledModules: [
+          'products', 'locations', 'orders', 'transfers', 'adjustments', 'ledger', 'reports', 'storage', 'team'
+        ],
+        permissions: ['*'],
+      };
+      (authUser as any).tax_engine = engine;
+
+      setToken(authToken);
+      setUser(authUser);
+      localStorage.setItem('invenza_token', authToken);
+      localStorage.setItem('invenza_user', JSON.stringify(authUser));
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  };
+
   const logout = () => {
     api.logout().catch(() => {});
     setToken(null);
@@ -266,6 +310,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isCompanyAdmin,
         isLoading,
         login,
+        setupAdmin,
         logout,
         updateUserLocal,
         switchTenant,

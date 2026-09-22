@@ -15,6 +15,7 @@ import { InvenzaChatbot } from './components/chat/InvenzaChatbot';
 import { Login } from './pages/Login';
 import { LandingPage } from './pages/LandingPage';
 import { JsonLd } from './components/common/JsonLd';
+import { api } from './services/api';
 import {
   DashboardSkeleton,
   ProductsSkeleton,
@@ -97,6 +98,7 @@ const NotFound = React.lazy(() =>
 const pathToTab: Record<string, TabType | '404'> = {
   '/': 'home',
   '/home': 'home',
+  '/login': 'login',
   '/dashboard': 'dashboard',
   '/products': 'products',
   '/ledger': 'ledger',
@@ -124,6 +126,7 @@ const pathToTab: Record<string, TabType | '404'> = {
 
 const tabToPath: Record<string, string> = {
   home: '/home',
+  login: '/login',
   dashboard: '/dashboard',
   products: '/products',
   ledger: '/ledger',
@@ -247,6 +250,25 @@ const AppContent: React.FC = () => {
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!isAuthenticated) {
+      api.getSetupStatus()
+        .then((res) => {
+          if (active && res?.needsSetup) {
+            setNeedsSetup(true);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setNeedsSetup(false);
+    }
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
 
   // Sync tab changes to browser URL and history
   const navigateTo = (tab: TabType | '404', params?: Record<string, string>, replace: boolean = false) => {
@@ -291,15 +313,15 @@ const AppContent: React.FC = () => {
         navigateTo('dashboard');
       }
     } else if (!isLoading) {
-      // For unauthenticated visitors, ensure URL path is cleanly /home (or /terms, /privacy)
-      const publicPaths = ['/home', '/terms', '/privacy'];
+      // For unauthenticated visitors, ensure URL path is cleanly /home (or /terms, /privacy, /login)
+      const publicPaths = ['/home', '/terms', '/privacy', '/login'];
       const path = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
-      if (!publicPaths.includes(path)) {
+      if (!publicPaths.includes(path) && !needsSetup) {
         window.history.replaceState({ tab: 'home' }, '', '/home');
         setCurrentTab('home');
       }
     }
-  }, [isAuthenticated, isSuperAdmin, isLoading, currentTab]);
+  }, [isAuthenticated, isSuperAdmin, isLoading, currentTab, needsSetup]);
 
   // Global keyboard shortcut for Command Palette (Ctrl/Cmd + K)
   useEffect(() => {
@@ -328,8 +350,12 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // If not logged in, allow public routes or show Login portal
+  // If not logged in, allow public routes or show Login portal / setup wizard
   if (!isAuthenticated) {
+    if (needsSetup || currentTab === 'login') {
+      return <Login onNavigate={(t) => navigateTo(t as any)} />;
+    }
+
     if (currentTab === 'terms') {
       return (
         <div className="min-h-screen bg-[#F4F5F8] dark:bg-[#0C1017] p-6 lg:p-12">

@@ -85,6 +85,33 @@ export const api = {
     }
   },
 
+  getSetupStatus: async (): Promise<{ needsSetup: boolean }> => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/setup-status`, {
+        cache: 'no-store',
+        credentials: 'include',
+      });
+      if (!res.ok) return { needsSetup: false };
+      return await res.json();
+    } catch {
+      return { needsSetup: false };
+    }
+  },
+
+  setupAdmin: async (data: { name: string; email: string; password: string; confirmPassword: string }) => {
+    const res = await fetch(`${API_BASE_URL}/auth/setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.detail || 'Setup failed. Please try again.');
+    }
+    return await res.json();
+  },
+
   logout: async () => {
     try {
       await fetch(`${API_BASE_URL}/auth/logout`, {
@@ -549,28 +576,70 @@ export const api = {
   },
 
   // Company Team & Users
-  getCompanyUsers: async () => fetchWithFallback<any[]>('/company/users/'),
+  getCompanyUsers: async () => fetchWithFallback<any[]>('/settings'),
 
-  createCompanyUser: async (data: {
-    full_name: string;
+  createSettingsUser: async (data: {
+    name: string;
     email: string;
-    password: string;
-    role: string;
-    permissions: string[];
-    send_email: boolean;
+    role?: string;
+    assigned_godown_id?: string | null;
   }) => {
     const token = getAuthToken();
-    const res = await fetch(`${API_BASE_URL}/company/users/`, {
+    const res = await fetch(`${API_BASE_URL}/settings/users`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      credentials: 'include',
       body: JSON.stringify(data),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || 'Failed to create user.');
+      throw new Error(err.error || err.detail || 'Failed to create user.');
+    }
+    return await res.json();
+  },
+
+  createCompanyUser: async (data: {
+    full_name?: string;
+    name?: string;
+    email: string;
+    password?: string;
+    role?: string;
+    assigned_godown_id?: string | null;
+    permissions?: string[];
+    send_email?: boolean;
+  }) => {
+    const token = getAuthToken();
+    const roleMapping: Record<string, string> = {
+      admin: 'OWNER',
+      owner: 'OWNER',
+      manager: 'MANAGER',
+      staff: 'STAFF',
+    };
+    const roleKey = (data.role || 'staff').toLowerCase();
+    const assignedRole = roleMapping[roleKey] || data.role || 'STAFF';
+
+    const payload = {
+      name: (data.name || data.full_name || '').trim(),
+      email: data.email.trim(),
+      role: assignedRole,
+      assigned_godown_id: data.assigned_godown_id || null,
+    };
+
+    const res = await fetch(`${API_BASE_URL}/settings/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || err.detail || 'Failed to create user.');
     }
     return await res.json();
   },

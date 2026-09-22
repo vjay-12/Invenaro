@@ -25,6 +25,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconPackage,
+  IconCopy,
 } from '../components/icons';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -413,11 +414,12 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [role, setRole] = useState('staff');
   const [permissions, setPermissions] = useState<string[]>(['inventory:read', 'inventory:write']);
   const [sendEmail, setSendEmail] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdTempPassword, setCreatedTempPassword] = useState<string | null>(null);
+  const [hasCopiedTempPassword, setHasCopiedTempPassword] = useState(false);
 
   // Edit User Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -510,41 +512,37 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
     }
   };
 
-  const generatePassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
-    let pass = '';
-    for (let i = 0; i < 12; i++) {
-      pass += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setPassword(pass);
-  };
-
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !email || !password) {
+    if (!fullName || !email) {
       showToast('Please fill in all required fields', 'error');
       return;
     }
 
     try {
       setIsSubmitting(true);
-      await api.createCompanyUser({
+      const res = await api.createCompanyUser({
         full_name: fullName,
         email,
-        password,
         role,
         permissions,
         send_email: sendEmail,
       });
 
-      showToast(`User ${fullName} created successfully!`, 'success');
       setIsAddModalOpen(false);
       setFullName('');
       setEmail('');
-      setPassword('');
       setRole('staff');
       setPermissions(['inventory:read', 'inventory:write']);
       loadUsers();
+
+      const tempPass = res?.temporaryPassword || res?.temporary_password;
+      if (tempPass) {
+        setCreatedTempPassword(tempPass);
+        setHasCopiedTempPassword(false);
+      } else {
+        showToast(`User ${fullName} created successfully!`, 'success');
+      }
     } catch (err: any) {
       showToast(err.message || 'Failed to create user', 'error');
     } finally {
@@ -690,7 +688,6 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
               <button
                 type="button"
                 onClick={() => {
-                  generatePassword();
                   setIsAddModalOpen(true);
                 }}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-subtle transition-colors"
@@ -1813,31 +1810,6 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Initial Password *
-                    </label>
-                    <button
-                      type="button"
-                      onClick={generatePassword}
-                      className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline"
-                    >
-                      Generate New
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full font-mono pl-3.5 pr-10 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0C1017] text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-teal-500 transition-colors"
-                    />
-                    <IconLock className="w-4 h-4 text-slate-400 absolute right-3.5 top-2.5" />
-                  </div>
-                </div>
-
-                <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                     Role Tier
                   </label>
@@ -1937,6 +1909,77 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Temporary Password One-Time Display Modal */}
+      {createdTempPassword && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white dark:bg-[#131924] border border-slate-200 dark:border-slate-800 rounded-xl shadow-modal relative p-6 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">User Created Successfully</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatedTempPassword(null);
+                  setHasCopiedTempPassword(false);
+                }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                <IconX className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Temporary password:
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 font-mono text-sm bg-slate-100 dark:bg-[#0C1017] border border-slate-200 dark:border-slate-800 rounded-lg px-3.5 py-2 text-slate-900 dark:text-slate-100 select-all break-all">
+                  {createdTempPassword}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(createdTempPassword);
+                    setHasCopiedTempPassword(true);
+                    setTimeout(() => setHasCopiedTempPassword(false), 3000);
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-colors shrink-0"
+                >
+                  {hasCopiedTempPassword ? (
+                    <>
+                      <IconCheck className="w-4 h-4" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <IconCopy className="w-4 h-4" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+              <p className="font-semibold">Warning:</p>
+              <p className="mt-0.5">This password can only be shown once. Make sure you copy it before closing this message.</p>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatedTempPassword(null);
+                  setHasCopiedTempPassword(false);
+                }}
+                className="px-5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

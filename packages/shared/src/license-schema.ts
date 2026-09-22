@@ -52,6 +52,7 @@ export const LicenseClaimsSchema = z.object({
   licenseExpiresAt: z.string(),
   graceDays: z.number().nonnegative().default(7),
   domain: z.string(),
+  adminEmail: z.string().optional(),
   iat: z.number(),
   exp: z.number(),
 });

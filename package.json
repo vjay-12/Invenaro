@@ -15,7 +15,7 @@
     "dev:api": "npm run dev --workspace=@invenaro/api",
     "dev:web": "npm run dev --workspace=@invenaro/web",
     "build": "npm run build --workspaces --if-present",
-    "test": "tsx --test apps/api/src/test_invenaro.ts apps/api/src/test_ledger.ts apps/api/src/test_auth_hardening.ts apps/api/src/test_license_integration.ts",
+    "test": "tsx --test apps/api/src/test_invenaro.ts apps/api/src/test_ledger.ts apps/api/src/test_auth_hardening.ts apps/api/src/test_license_integration.ts apps/api/src/test_first_run_setup.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "admin:create": "tsx apps/api/src/scripts/createAdmin.ts",

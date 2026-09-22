@@ -26,6 +26,7 @@ import { api } from '../../services/api';
 
 export type TabType =
   | 'home'
+  | 'login'
   | 'dashboard'
   | 'create_sales_order'
   | 'companies'

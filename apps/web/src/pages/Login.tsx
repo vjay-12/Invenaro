@@ -27,11 +27,41 @@ export interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNavigate }) => {
-  const { login } = useAuth();
+  const { login, setupAdmin } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Setup wizard state
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [isCheckingSetup, setIsCheckingSetup] = useState(true);
+  const [setupName, setSetupName] = useState('');
+  const [setupEmail, setSetupEmail] = useState('');
+  const [setupPassword, setSetupPassword] = useState('');
+  const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+
+  // Check setup status on mount
+  useEffect(() => {
+    let active = true;
+    api.getSetupStatus()
+      .then((res) => {
+        if (active) {
+          setNeedsSetup(Boolean(res?.needsSetup));
+          setIsCheckingSetup(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setIsCheckingSetup(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Sign in form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -63,6 +93,42 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
     }
     return () => clearTimeout(timer);
   }, [resendCooldown]);
+
+  const handleSetupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSetupError(null);
+    if (setupPassword.length < 10) {
+      setSetupError('Password must be at least 10 characters.');
+      return;
+    }
+    if (setupPassword !== setupConfirmPassword) {
+      setSetupError('Passwords do not match.');
+      return;
+    }
+
+    setSetupLoading(true);
+    try {
+      await setupAdmin({
+        name: setupName.trim(),
+        email: setupEmail.trim(),
+        password: setupPassword,
+        confirmPassword: setupConfirmPassword,
+      });
+      setNeedsSetup(false);
+      if (onClose) {
+        onClose();
+      }
+      if (onNavigate) {
+        onNavigate('dashboard');
+      } else {
+        window.location.href = '/dashboard';
+      }
+    } catch (err: any) {
+      setSetupError(err.message || 'Setup failed. Please check your credentials and try again.');
+    } finally {
+      setSetupLoading(false);
+    }
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,6 +249,111 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
   };
 
   const renderCardContent = () => {
+    if (needsSetup) {
+      return (
+        <div className={isModal ? 'w-full' : 'bg-white dark:bg-[#131924] border border-slate-200 dark:border-[#1E2636] rounded-xl p-6 sm:p-8 shadow-card'}>
+          <div className="mb-6">
+            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20 mb-2">
+              <IconShieldCheck className="w-3 h-3" />
+              <span>Initial System Setup</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Create your admin account</h2>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+              Initialize this deployment by creating the primary administrator (OWNER) account.
+            </p>
+          </div>
+
+          {setupError && (
+            <div className="mb-5 p-3 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-300 text-xs flex items-start gap-2.5">
+              <IconAlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+              <span>{setupError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSetupSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Name
+              </label>
+              <input
+                type="text"
+                required
+                value={setupName}
+                onChange={(e) => setSetupName(e.target.value)}
+                placeholder="e.g. Administrator"
+                className="w-full px-3 py-2 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-600 transition-colors"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Email
+              </label>
+              <div className="relative">
+                <IconMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <input
+                  type="email"
+                  required
+                  value={setupEmail}
+                  onChange={(e) => setSetupEmail(e.target.value)}
+                  autoComplete="email"
+                  placeholder="admin@customer.com"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-600 font-mono transition-colors"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Password (minimum 10 characters)
+              </label>
+              <div className="relative">
+                <IconLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <input
+                  type="password"
+                  required
+                  minLength={10}
+                  value={setupPassword}
+                  onChange={(e) => setSetupPassword(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder="••••••••••••"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-600 font-mono transition-colors"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Confirm Password
+              </label>
+              <div className="relative">
+                <IconLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <input
+                  type="password"
+                  required
+                  minLength={10}
+                  value={setupConfirmPassword}
+                  onChange={(e) => setSetupConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder="••••••••••••"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-[#F6F8FA] dark:bg-[#0C1017] border border-slate-200 dark:border-[#1E2636] text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-teal-600 font-mono transition-colors"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={setupLoading}
+              className="w-full mt-2 py-2.5 px-4 rounded-lg bg-teal-700 hover:bg-teal-800 font-bold text-xs text-white shadow-subtle transition-colors flex items-center justify-center gap-2"
+            >
+              <span>{setupLoading ? 'Creating Admin Account...' : 'Create Admin Account & Launch Workspace'}</span>
+              <IconArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        </div>
+      );
+    }
+
     if (isForcePasswordChange) {
       return (
         <div className={isModal ? 'w-full' : 'bg-white dark:bg-[#131924] border border-slate-200 dark:border-[#1E2636] rounded-xl p-6 sm:p-8 shadow-card'}>
@@ -588,7 +759,7 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
   return (
     <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#F1F3F7] dark:bg-[#0C1017] text-slate-900 dark:text-slate-100 selection:bg-teal-700 selection:text-white relative">
       <PageMeta
-        title={isResetMode ? "Reset Password | Invenza Enterprise Inventory" : "Operator Sign In | Invenza Enterprise Inventory"}
+        title={needsSetup ? "Create Admin Account | Invenaro Setup" : isResetMode ? "Reset Password | Invenza Enterprise Inventory" : "Operator Sign In | Invenza Enterprise Inventory"}
         description="Secure multi-tenant inventory portal. Sign in with organizational credentials to access movement ledgers, warehouse routing, and order dispatches."
         canonicalPath="/login"
       />

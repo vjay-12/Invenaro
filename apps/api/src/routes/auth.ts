@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { Router, Request, Response } from 'express';
-import { loginSchema, changePasswordSchema, firstLoginChangePasswordSchema } from '@invenaro/validation';
+import { loginSchema, changePasswordSchema, firstLoginChangePasswordSchema, setupSchema } from '@invenaro/validation';
 import { prisma } from '../db.js';
 import { authMiddleware } from '../middlewares/auth.js';
 import { LicenseService } from '../services/license.js';
@@ -18,6 +18,150 @@ function getClientIp(req: Request): string {
   }
   return req.ip || req.socket.remoteAddress || 'unknown';
 }
+
+// Step 3: GET /setup-status (Public)
+router.get('/setup-status', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userCount = await prisma.user.count();
+    if (userCount > 0) {
+      res.json({ needsSetup: false });
+      return;
+    }
+
+    const entitlements = await LicenseService.getEntitlements();
+    const verifiedAdminEmail = await LicenseService.getVerifiedAdminEmail();
+    const state = entitlements.state.state;
+
+    // Setup required only when deployment has a valid/usable license with adminEmail AND zero users
+    const isLicenseUsable = (state === 'active' || state === 'grace') && Boolean(verifiedAdminEmail);
+
+    res.json({
+      needsSetup: isLicenseUsable,
+    });
+  } catch (err) {
+    console.error('Setup status check error occurred');
+    res.json({ needsSetup: false });
+  }
+});
+
+// Step 4 & 5 & 6: POST /setup (Public)
+router.post('/setup', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parse = setupSchema.safeParse(req.body);
+    if (!parse.success) {
+      res.status(400).json({ error: parse.error.errors[0]?.message || 'Invalid setup data' });
+      return;
+    }
+
+    const { name, email, password } = parse.data;
+    const submittedEmail = email.trim().toLowerCase();
+
+    // 1. Obtain adminEmail from the VERIFIED signed license
+    const entitlements = await LicenseService.getEntitlements();
+    const verifiedAdminEmail = await LicenseService.getVerifiedAdminEmail();
+    const state = entitlements.state.state;
+
+    if (!verifiedAdminEmail || (state !== 'active' && state !== 'grace')) {
+      res.status(400).json({
+        error: 'Deployment does not have a valid license with an assigned administrator email.',
+      });
+      return;
+    }
+
+    // 2. Normalize and compare emails
+    if (submittedEmail !== verifiedAdminEmail) {
+      res.status(403).json({
+        error: 'The email address does not match the administrator email assigned to this deployment.',
+      });
+      return;
+    }
+
+    // 3. Race condition protection: re-check user count inside transaction
+    const passwordHash = await bcrypt.hash(password, 10);
+    const clientIp = getClientIp(req);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const userCount = await tx.user.count();
+      if (userCount > 0) {
+        const error: any = new Error('Setup already completed. Users already exist.');
+        error.statusCode = 409;
+        throw error;
+      }
+
+      let defaultGodown = await tx.godown.findFirst({
+        where: { is_default: true },
+      });
+
+      if (!defaultGodown) {
+        defaultGodown = await tx.godown.create({
+          data: {
+            name: 'Main Central Godown',
+            code: 'MAIN-01',
+            is_default: true,
+            is_active: true,
+          },
+        });
+      }
+
+      const newUser = await tx.user.create({
+        data: {
+          name: name.trim(),
+          email: submittedEmail,
+          password_hash: passwordHash,
+          role: 'OWNER',
+          must_change_password: false,
+          assigned_godown_id: defaultGodown.id,
+        },
+      });
+
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
+
+      await tx.session.create({
+        data: {
+          token_hash: token,
+          user_id: newUser.id,
+          expires_at: expiresAt,
+          ip_address: clientIp,
+          user_agent: (req.headers['user-agent'] as string) || null,
+        },
+      });
+
+      return { user: newUser, token };
+    });
+
+    res.cookie('invenaro_session', result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 14 * 24 * 60 * 60 * 1000,
+    });
+
+    res.status(201).json({
+      access_token: result.token,
+      must_change_password: false,
+      user_role: 'admin',
+      full_name: result.user.name,
+      company_name: 'Invenaro Operations',
+      user: {
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email,
+        role: result.user.role,
+        assigned_godown_id: result.user.assigned_godown_id,
+        must_change_password: false,
+      },
+      entitlements,
+    });
+  } catch (err: any) {
+    if (err?.statusCode === 409) {
+      res.status(409).json({ error: err.message || 'Setup already completed. Users already exist.' });
+      return;
+    }
+    console.error('Setup error occurred');
+    res.status(500).json({ error: 'Internal server error during setup' });
+  }
+});
 
 router.post('/login', async (req: Request, res: Response): Promise<void> => {
   try {

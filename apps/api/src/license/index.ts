@@ -151,6 +151,16 @@ export class LicenseService {
     this.inMemoryCache = null;
     return this.getStatus();
   }
+
+  static async getVerifiedClaims(): Promise<LicenseClaims | null> {
+    await this.getEntitlements();
+    return this.inMemoryCache?.claims ?? null;
+  }
+
+  static async getVerifiedAdminEmail(): Promise<string | null> {
+    const claims = await this.getVerifiedClaims();
+    return claims?.adminEmail ? claims.adminEmail.trim().toLowerCase() : null;
+  }
 }
 
 export * from './client.js';

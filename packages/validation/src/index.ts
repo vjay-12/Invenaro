@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
 });
 
@@ -12,6 +12,25 @@ export const changePasswordSchema = z.object({
 
 export const firstLoginChangePasswordSchema = z.object({
   newPassword: z.string().min(10, 'Password must be at least 10 characters'),
+});
+
+export const setupSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Name is required'),
+    email: z.string().trim().email('Invalid email address'),
+    password: z.string().min(10, 'Password must be at least 10 characters'),
+    confirmPassword: z.string().min(1, 'Please confirm your password'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+export const createUserSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required'),
+  email: z.string().trim().email('Invalid email address'),
+  role: z.enum(['OWNER', 'MANAGER', 'STAFF']).default('STAFF'),
+  assigned_godown_id: z.string().optional().nullable(),
 });
 
 export const updateCompanySettingsSchema = z.object({

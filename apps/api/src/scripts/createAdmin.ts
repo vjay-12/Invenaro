@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../db.js';
+import { generateTemporaryPassword } from '../utils/password.js';
 
 function parseCliArgs() {
   const args = process.argv.slice(2);
@@ -28,19 +28,20 @@ async function main() {
     process.exit(1);
   }
 
+  const normalizedEmail = email.trim().toLowerCase();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
+  if (!emailRegex.test(normalizedEmail)) {
     console.error(`❌ Error: Invalid email format: "${email}"`);
     process.exit(1);
   }
 
   // Check if user already exists
   const existing = await prisma.user.findUnique({
-    where: { email },
+    where: { email: normalizedEmail },
   });
 
   if (existing) {
-    console.error(`❌ Error: User with email "${email}" already exists.`);
+    console.error(`❌ Error: User with email "${normalizedEmail}" already exists.`);
     process.exit(1);
   }
 
@@ -61,12 +62,12 @@ async function main() {
   }
 
   // Generate strong random temporary password
-  const tempPassword = crypto.randomBytes(12).toString('base64url') + '!A9';
+  const tempPassword = generateTemporaryPassword();
   const passwordHash = await bcrypt.hash(tempPassword, 10);
 
   const user = await prisma.user.create({
     data: {
-      email,
+      email: normalizedEmail,
       name,
       password_hash: passwordHash,
       role: 'OWNER',
@@ -85,6 +86,7 @@ async function main() {
   console.log(`  Temporary Password:  ${tempPassword}`);
   console.log('  Must Change Password: true (Enforced on first login)');
   console.log('===============================================================');
+  console.log('  NOTE: First-admin creation normally happens through the UI now.');
   console.log('  NOTE: Securely transmit this temporary password to the admin.');
   console.log('  It will NOT be shown again and cannot be retrieved.');
   console.log('===============================================================');

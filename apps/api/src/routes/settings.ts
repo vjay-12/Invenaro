@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { updateCompanySettingsSchema } from '@invenaro/validation';
 import { prisma } from '../db.js';
 import { authMiddleware } from '../middlewares/auth.js';
+import { generateTemporaryPassword } from '../utils/password.js';
 
 const router = Router();
 
@@ -79,25 +80,46 @@ router.put('/', async (req, res): Promise<void> => {
 
 router.post('/users', async (req, res): Promise<void> => {
   try {
-    const { name, email, password, role, assigned_godown_id } = req.body;
-    if (!name || !email || !password) {
-      res.status(400).json({ error: 'Name, email, and password are required' });
+    // Step 8: Only OWNER can call POST /settings/users
+    if (req.user?.role !== 'OWNER') {
+      res.status(403).json({ error: 'Forbidden: Only an OWNER can create users' });
       return;
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const { name, email, role, assigned_godown_id } = req.body;
+    if (!name || !email) {
+      res.status(400).json({ error: 'Name and email are required' });
+      return;
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      res.status(400).json({ error: 'Invalid email address' });
+      return;
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
       res.status(400).json({ error: 'User with this email already exists' });
       return;
     }
 
-    const password_hash = await bcrypt.hash(password, 10);
+    const validRoles = ['OWNER', 'MANAGER', 'STAFF'];
+    const assignedRole = role && validRoles.includes(role) ? role : 'STAFF';
+
+    // Step 9: Server generates a strong random temporary password
+    // Caller cannot supply the user's password
+    const tempPassword = generateTemporaryPassword();
+    const password_hash = await bcrypt.hash(tempPassword, 10);
+
     const newUser = await prisma.user.create({
       data: {
-        name,
-        email,
+        name: String(name).trim(),
+        email: normalizedEmail,
         password_hash,
-        role: role || 'STAFF',
+        role: assignedRole as any,
+        must_change_password: true,
         assigned_godown_id: assigned_godown_id || null,
       },
       select: {
@@ -106,11 +128,16 @@ router.post('/users', async (req, res): Promise<void> => {
         email: true,
         role: true,
         assigned_godown_id: true,
+        must_change_password: true,
         created_at: true,
       },
     });
 
-    res.status(201).json(newUser);
+    res.status(201).json({
+      ...newUser,
+      temporaryPassword: tempPassword,
+      temporary_password: tempPassword,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create user' });
   }
