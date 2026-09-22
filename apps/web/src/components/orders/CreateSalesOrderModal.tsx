@@ -4,9 +4,11 @@ import {
   IconTrash2,
   IconAlertCircle,
   IconAlertTriangle,
+  IconWarehouse,
 } from '../icons';
 import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
+import { useLicense } from '../../context/LicenseContext';
 import { SOLineItem } from '../../types/inventory';
 import { Modal } from '../common/Modal';
 import { ProductSearchDropdown } from '../common/ProductSearchDropdown';
@@ -34,6 +36,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     createSalesOrder,
     taxConfig,
   } = useInventory();
+  const license = useLicense();
+  const isMultiGodown = license.hasModule('multi_godown');
   const { user, applyTaxToSalesOrders } = useAuth();
   const effectiveEngine = (user as any)?.taxEngine || (user as any)?.tax_engine || taxConfig.taxType || 'GST';
   const isTaxEnabled = effectiveEngine !== 'NONE' && applyTaxToSalesOrders !== false;
@@ -334,11 +338,18 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Fulfillment Warehouse *
             </label>
-            <WarehouseSelectDropdown
-              locations={locations}
-              selectedLocationId={sourceLocationId}
-              onSelect={setSourceLocationId}
-            />
+            {isMultiGodown ? (
+              <WarehouseSelectDropdown
+                locations={locations}
+                selectedLocationId={sourceLocationId}
+                onSelect={setSourceLocationId}
+              />
+            ) : (
+              <div className="h-9 px-3 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#131924] text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                <IconWarehouse className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                <span>{locations[0] ? `${locations[0].code} : ${locations[0].name}` : 'Main Godown'}</span>
+              </div>
+            )}
           </div>
 
           <div>

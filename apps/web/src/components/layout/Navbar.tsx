@@ -15,6 +15,7 @@ import {
 import { useInventory } from '../../context/InventoryContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { useLicense } from '../../context/LicenseContext';
 
 import { NotificationDropdown } from './NotificationDropdown';
 import { TabType } from './Sidebar';
@@ -45,6 +46,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     useInventory();
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+  const license = useLicense();
+  const isMultiGodown = license.hasModule('multi_godown');
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -125,9 +128,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
-        {/* Multi-Warehouse Selector Custom Dropdown (Only on tabs where warehouse filtering is applicable) */}
+        {/* Multi-Warehouse Selector or Single-Godown Badge */}
         {showWarehouseSelector && (
-          <div className="relative" ref={warehouseMenuRef}>
+          isMultiGodown ? (
+            <div className="relative" ref={warehouseMenuRef}>
             <button
               type="button"
               onClick={() => setIsWarehouseMenuOpen((prev) => !prev)}
@@ -267,6 +271,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
           </div>
+        ) : (
+            <div className="h-9 px-3 text-xs font-semibold rounded-lg border border-slate-200/80 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#131924] text-slate-700 dark:text-slate-300 flex items-center gap-2 max-w-[210px] sm:max-w-[270px] select-none">
+              <IconWarehouse className="h-3.5 w-3.5 shrink-0 text-teal-600 dark:text-teal-400" />
+              <span className="truncate font-medium">
+                {locations[0] ? `${locations[0].code} : ${locations[0].name}` : 'Main Godown'}
+              </span>
+            </div>
+          )
         )}
       </div>
 

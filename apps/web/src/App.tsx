@@ -488,6 +488,9 @@ const AppContent: React.FC = () => {
           </Suspense>
         );
       case 'warehouses':
+        if (!license.hasModule('multi_godown')) {
+          return <ModuleLockedScreen moduleName="Multi-Godown Management" requiredPlan="Business" />;
+        }
         return (
           <Suspense fallback={<DashboardSkeleton />}>
             <Warehouses />

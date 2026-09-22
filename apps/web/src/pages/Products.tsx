@@ -32,6 +32,7 @@ import {
   IconArrowUpDown as ArrowUpDown,
 } from '../components/icons';
 import { useInventory } from '../context/InventoryContext';
+import { useLicense } from '../context/LicenseContext';
 import { Product, AdjustmentReasonCode, CurrencyCode } from '../types/inventory';
 import { Modal } from '../components/common/Modal';
 import { BarcodeLabelModal } from '../components/common/BarcodeLabelModal';
@@ -81,6 +82,8 @@ export const Products: React.FC = () => {
     bulkAdjustStock,
     taxConfig,
   } = useInventory();
+  const license = useLicense();
+  const isMultiGodown = license.hasModule('multi_godown');
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -1064,8 +1067,8 @@ export const Products: React.FC = () => {
         </div>
       </div>
 
-      {/* Warehouse Focus Alert Banner (Shown when a warehouse is selected) */}
-      {selectedLocationId !== 'all' && (
+      {/* Warehouse Focus Alert Banner (Shown when a warehouse is selected and multi-godown is licensed) */}
+      {isMultiGodown && selectedLocationId !== 'all' && (
         <div className="!mt-2.5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50/90 dark:border-teal-500/25 dark:bg-teal-500/10 px-4 py-3 text-xs text-teal-900 dark:text-teal-300 shadow-sm">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-500/20 text-teal-700 dark:text-teal-400 shrink-0">
@@ -1933,11 +1936,18 @@ export const Products: React.FC = () => {
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Target Warehouse
             </label>
-            <WarehouseSelectDropdown
-              locations={locations}
-              selectedLocationId={bulkLocationId}
-              onSelect={(id) => setBulkLocationId(id)}
-            />
+            {isMultiGodown ? (
+              <WarehouseSelectDropdown
+                locations={locations}
+                selectedLocationId={bulkLocationId}
+                onSelect={(id) => setBulkLocationId(id)}
+              />
+            ) : (
+              <div className="h-9 px-3 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#131924] text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                <Warehouse className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                <span>{locations[0] ? `${locations[0].code} : ${locations[0].name}` : 'Main Godown'}</span>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -2555,11 +2565,13 @@ export const Products: React.FC = () => {
               <h4 className="font-bold text-slate-900 dark:text-white flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Warehouse className="h-4 w-4 text-indigo-500" />
-                  Multi-Warehouse Stock Distribution
+                  {isMultiGodown ? 'Multi-Warehouse Stock Distribution' : 'Warehouse Stock Location'}
                 </span>
-                <span className="text-[11px] font-normal text-slate-400 font-mono">
-                  {locations.length} Registered Locations
-                </span>
+                {isMultiGodown && (
+                  <span className="text-[11px] font-normal text-slate-400 font-mono">
+                    {locations.length} Registered Locations
+                  </span>
+                )}
               </h4>
 
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">

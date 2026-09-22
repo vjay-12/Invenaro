@@ -11,6 +11,7 @@ import {
   IconUser,
   IconBuilding,
   IconLayers,
+  IconWarehouse,
 } from '../components/icons';
 import { useInventory } from '../context/InventoryContext';
 import { useAuth } from '../context/AuthContext';
@@ -20,6 +21,7 @@ import { WarehouseSelectDropdown } from '../components/common/WarehouseSelectDro
 import { StateSelectDropdown } from '../components/common/StateSelectDropdown';
 import { PageMeta } from '../components/common/PageMeta';
 import { Modal } from '../components/common/Modal';
+import { useLicense } from '../context/LicenseContext';
 import { api } from '../services/api';
 import { TabType } from '../components/layout/Sidebar';
 import { EU_VAT_RATES, US_STATE_SALES_TAX_RATES } from '../utils/taxUtils';
@@ -37,6 +39,8 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
     createSalesOrder,
     taxConfig,
   } = useInventory();
+  const license = useLicense();
+  const isMultiGodown = license.hasModule('multi_godown');
   const { user, applyTaxToSalesOrders, updateUserLocal } = useAuth();
   const [tenantTaxSetting, setTenantTaxSetting] = useState<boolean | null>(() => applyTaxToSalesOrders !== false);
 
@@ -692,11 +696,18 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
                   Fulfillment Warehouse *
                 </label>
               </div>
-              <WarehouseSelectDropdown
-                locations={locations}
-                selectedLocationId={sourceLocationId}
-                onSelect={setSourceLocationId}
-              />
+              {isMultiGodown ? (
+                <WarehouseSelectDropdown
+                  locations={locations}
+                  selectedLocationId={sourceLocationId}
+                  onSelect={setSourceLocationId}
+                />
+              ) : (
+                <div className="h-[34px] px-3 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#0C1017] text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                  <IconWarehouse className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                  <span>{locations[0] ? `${locations[0].code} : ${locations[0].name}` : 'Main Godown'}</span>
+                </div>
+              )}
             </div>
 
             {/* Order Date */}

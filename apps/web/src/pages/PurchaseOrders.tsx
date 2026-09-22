@@ -11,6 +11,7 @@ import {
   IconAlertTriangle,
 } from '../components/icons';
 import { useInventory } from '../context/InventoryContext';
+import { useLicense } from '../context/LicenseContext';
 import { PurchaseOrder, POLineItem } from '../types/inventory';
 import { Modal } from '../components/common/Modal';
 import { PageMeta } from '../components/common/PageMeta';
@@ -28,6 +29,8 @@ export const PurchaseOrders: React.FC = () => {
     createPurchaseOrder,
     receiveGoods,
   } = useInventory();
+  const license = useLicense();
+  const isMultiGodown = license.hasModule('multi_godown');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -190,7 +193,7 @@ export const PurchaseOrders: React.FC = () => {
       </div>
 
       {/* Active Warehouse Filter Banner */}
-      {selectedLocationId !== 'all' && (
+      {isMultiGodown && selectedLocationId !== 'all' && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50/90 dark:border-teal-500/25 dark:bg-teal-500/10 px-4 py-3 text-xs text-teal-900 dark:text-teal-300 shadow-sm">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-100 dark:bg-teal-500/20 text-teal-700 dark:text-teal-400 shrink-0">
@@ -439,11 +442,18 @@ export const PurchaseOrders: React.FC = () => {
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Receiving Warehouse *
               </label>
-              <WarehouseSelectDropdown
-                locations={locations}
-                selectedLocationId={targetLocationId}
-                onSelect={setTargetLocationId}
-              />
+              {isMultiGodown ? (
+                <WarehouseSelectDropdown
+                  locations={locations}
+                  selectedLocationId={targetLocationId}
+                  onSelect={setTargetLocationId}
+                />
+              ) : (
+                <div className="h-9 px-3 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#131924] text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                  <IconWarehouse className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                  <span>{locations[0] ? `${locations[0].code} : ${locations[0].name}` : 'Main Godown'}</span>
+                </div>
+              )}
             </div>
 
             <div>
