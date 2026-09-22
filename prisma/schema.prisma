@@ -1,17 +1,11 @@
-datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
-}
-
 generator client {
   provider = "prisma-client-js"
 }
 
-enum UserRole {
-  OWNER
-  MANAGER
-  STAFF
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -20,12 +14,12 @@ model User {
   password_hash        String
   name                 String
   role                 UserRole  @default(STAFF)
-  must_change_password Boolean   @default(false)
   assigned_godown_id   String?
-  assigned_godown      Godown?   @relation(fields: [assigned_godown_id], references: [id])
-  sessions             Session[]
   created_at           DateTime  @default(now())
   updated_at           DateTime  @updatedAt
+  must_change_password Boolean   @default(false)
+  sessions             Session[]
+  assigned_godown      Godown?   @relation(fields: [assigned_godown_id], references: [id])
 
   @@map("users")
 }
@@ -34,11 +28,11 @@ model Session {
   id         String   @id @default(uuid())
   token_hash String   @unique
   user_id    String
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   expires_at DateTime
   ip_address String?
   user_agent String?
   created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@index([token_hash])
@@ -67,7 +61,7 @@ model CompanySettings {
   state_code   String?
   gstin        String?
   enable_gst   Boolean  @default(false)
-  logo_data    String?  @db.Text
+  logo_data    String?
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 
@@ -76,39 +70,38 @@ model CompanySettings {
 
 model LicenseCache {
   id            String   @id @default("active_license")
-  token         String   @db.Text
-  fetchedAt     DateTime @default(now())
-  tokenExp      DateTime
-  status        String   @default("unlicensed")
   plan          String   @default("basic")
-  modules       Json
-  lastError     String?
+  fetchedAt     DateTime @default(now())
   lastAttemptAt DateTime @default(now())
+  lastError     String?
+  modules       Json
+  status        String   @default("unlicensed")
+  token         String
+  tokenExp      DateTime
 
   @@map("license_cache")
 }
 
 model Godown {
-  id              String          @id @default(uuid())
+  id              String            @id @default(uuid())
   name            String
-  code            String          @unique
+  code            String            @unique
   address         String?
   state_code      String?
   gstin           String?
-  is_default      Boolean         @default(false)
-  is_active       Boolean         @default(true)
-  created_at      DateTime        @default(now())
-  updated_at      DateTime        @updatedAt
-
+  is_default      Boolean           @default(false)
+  is_active       Boolean           @default(true)
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @updatedAt
+  invoices        Invoice[]
+  purchase_orders PurchaseOrder[]
+  sales_orders    SalesOrder[]
+  adjustments     StockAdjustment[]
   stock_balances  StockBalance[]
   stock_movements StockMovement[]
-  sales_orders    SalesOrder[]
-  purchase_orders PurchaseOrder[]
+  transfers_in    StockTransfer[]   @relation("DestGodown")
+  transfers_out   StockTransfer[]   @relation("SourceGodown")
   users           User[]
-  transfers_out   StockTransfer[] @relation("SourceGodown")
-  transfers_in    StockTransfer[] @relation("DestGodown")
-  adjustments     StockAdjustment[]
-  invoices        Invoice[]
 
   @@map("godowns")
 }
@@ -117,35 +110,34 @@ model ProductCategory {
   id          String    @id @default(uuid())
   name        String    @unique
   description String?
-  products    Product[]
   created_at  DateTime  @default(now())
+  products    Product[]
 
   @@map("product_categories")
 }
 
 model Product {
-  id              String          @id @default(uuid())
-  sku             String          @unique
-  name            String
-  description     String?
-  category_id     String?
-  category        ProductCategory? @relation(fields: [category_id], references: [id])
-  unit            String          @default("PCS")
-  sale_price      Decimal         @default(0) @db.Decimal(12, 2)
-  purchase_price  Decimal         @default(0) @db.Decimal(12, 2)
-  hsn_code        String?
-  tax_rate        Decimal         @default(0) @db.Decimal(5, 2)
-  min_stock_level Decimal         @default(0) @db.Decimal(12, 2)
-  is_active       Boolean         @default(true)
-  created_at      DateTime        @default(now())
-  updated_at      DateTime        @updatedAt
-
+  id               String                @id @default(uuid())
+  sku              String                @unique
+  name             String
+  description      String?
+  category_id      String?
+  unit             String                @default("PCS")
+  sale_price       Decimal               @default(0) @db.Decimal(12, 2)
+  purchase_price   Decimal               @default(0) @db.Decimal(12, 2)
+  hsn_code         String?
+  tax_rate         Decimal               @default(0) @db.Decimal(5, 2)
+  min_stock_level  Decimal               @default(0) @db.Decimal(12, 2)
+  is_active        Boolean               @default(true)
+  created_at       DateTime              @default(now())
+  updated_at       DateTime              @updatedAt
+  category         ProductCategory?      @relation(fields: [category_id], references: [id])
+  purchase_items   PurchaseOrderItem[]
+  sales_items      SalesOrderItem[]
+  adjustment_items StockAdjustmentItem[]
   stock_balances   StockBalance[]
   stock_movements  StockMovement[]
-  sales_items      SalesOrderItem[]
-  purchase_items   PurchaseOrderItem[]
   transfer_items   StockTransferItem[]
-  adjustment_items StockAdjustmentItem[]
 
   @@map("products")
 }
@@ -157,24 +149,12 @@ model StockBalance {
   current_quantity Decimal  @default(0) @db.Decimal(12, 2)
   avg_cost         Decimal  @default(0) @db.Decimal(12, 2)
   updated_at       DateTime @updatedAt
-
-  product          Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
   godown           Godown   @relation(fields: [godown_id], references: [id], onDelete: Cascade)
+  product          Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@unique([product_id, godown_id])
   @@index([godown_id])
   @@map("stock_balances")
-}
-
-enum MovementType {
-  PURCHASE_RECEIPT
-  SALES_DELIVERY
-  TRANSFER_OUT
-  TRANSFER_IN
-  ADJUSTMENT_ADD
-  ADJUSTMENT_REDUCE
-  RETURN_IN
-  RETURN_OUT
 }
 
 model StockMovement {
@@ -190,9 +170,8 @@ model StockMovement {
   notes          String?
   created_at     DateTime     @default(now())
   created_by     String?
-
-  product        Product      @relation(fields: [product_id], references: [id], onDelete: Cascade)
   godown         Godown       @relation(fields: [godown_id], references: [id], onDelete: Cascade)
+  product        Product      @relation(fields: [product_id], references: [id], onDelete: Cascade)
 
   @@index([product_id, godown_id])
   @@index([movement_type])
@@ -201,19 +180,18 @@ model StockMovement {
 }
 
 model Customer {
-  id          String       @id @default(uuid())
-  name        String
-  phone       String?
-  email       String?
-  address     String?
-  state_code  String?
-  gstin       String?
-  created_at  DateTime     @default(now())
-  updated_at  DateTime     @updatedAt
-
-  sales_orders SalesOrder[]
+  id           String       @id @default(uuid())
+  name         String
+  phone        String?
+  email        String?
+  address      String?
+  state_code   String?
+  gstin        String?
+  created_at   DateTime     @default(now())
+  updated_at   DateTime     @updatedAt
   invoices     Invoice[]
   payments     Payment[]
+  sales_orders SalesOrder[]
 
   @@map("customers")
 }
@@ -229,44 +207,35 @@ model Supplier {
   opening_balance Decimal         @default(0) @db.Decimal(12, 2)
   created_at      DateTime        @default(now())
   updated_at      DateTime        @updatedAt
-
-  purchase_orders PurchaseOrder[]
   payments        Payment[]
+  purchase_orders PurchaseOrder[]
 
   @@map("suppliers")
 }
 
-enum OrderStatus {
-  DRAFT
-  CONFIRMED
-  DELIVERED
-  CANCELLED
-}
-
 model SalesOrder {
-  id             String           @id @default(uuid())
-  order_number   String           @unique
-  customer_id    String?
-  customer_name  String
-  customer_phone String?
+  id               String           @id @default(uuid())
+  order_number     String           @unique
+  customer_id      String?
+  customer_name    String
+  customer_phone   String?
   customer_address String?
-  customer_gstin String?
-  godown_id      String
-  order_date     DateTime         @default(now())
-  status         OrderStatus      @default(CONFIRMED)
-  subtotal       Decimal          @default(0) @db.Decimal(12, 2)
-  tax_total      Decimal          @default(0) @db.Decimal(12, 2)
-  discount_total Decimal          @default(0) @db.Decimal(12, 2)
-  grand_total    Decimal          @default(0) @db.Decimal(12, 2)
-  notes          String?
-  created_at     DateTime         @default(now())
-  updated_at     DateTime         @updatedAt
-  created_by     String?
-
-  customer       Customer?        @relation(fields: [customer_id], references: [id])
-  godown         Godown           @relation(fields: [godown_id], references: [id])
-  items          SalesOrderItem[]
-  invoices       Invoice[]
+  customer_gstin   String?
+  godown_id        String
+  order_date       DateTime         @default(now())
+  status           OrderStatus      @default(CONFIRMED)
+  subtotal         Decimal          @default(0) @db.Decimal(12, 2)
+  tax_total        Decimal          @default(0) @db.Decimal(12, 2)
+  discount_total   Decimal          @default(0) @db.Decimal(12, 2)
+  grand_total      Decimal          @default(0) @db.Decimal(12, 2)
+  notes            String?
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+  created_by       String?
+  invoices         Invoice[]
+  items            SalesOrderItem[]
+  customer         Customer?        @relation(fields: [customer_id], references: [id])
+  godown           Godown           @relation(fields: [godown_id], references: [id])
 
   @@index([customer_id])
   @@index([godown_id])
@@ -283,18 +252,10 @@ model SalesOrderItem {
   tax_rate       Decimal    @default(0) @db.Decimal(5, 2)
   tax_amount     Decimal    @default(0) @db.Decimal(12, 2)
   total          Decimal    @db.Decimal(12, 2)
-
-  sales_order    SalesOrder @relation(fields: [sales_order_id], references: [id], onDelete: Cascade)
   product        Product    @relation(fields: [product_id], references: [id])
+  sales_order    SalesOrder @relation(fields: [sales_order_id], references: [id], onDelete: Cascade)
 
   @@map("sales_order_items")
-}
-
-enum POStatus {
-  DRAFT
-  ORDERED
-  RECEIVED
-  CANCELLED
 }
 
 model PurchaseOrder {
@@ -316,10 +277,9 @@ model PurchaseOrder {
   created_at       DateTime            @default(now())
   updated_at       DateTime            @updatedAt
   created_by       String?
-
-  supplier         Supplier?           @relation(fields: [supplier_id], references: [id])
-  godown           Godown              @relation(fields: [godown_id], references: [id])
   items            PurchaseOrderItem[]
+  godown           Godown              @relation(fields: [godown_id], references: [id])
+  supplier         Supplier?           @relation(fields: [supplier_id], references: [id])
 
   @@index([supplier_id])
   @@index([godown_id])
@@ -335,18 +295,10 @@ model PurchaseOrderItem {
   tax_rate          Decimal       @default(0) @db.Decimal(5, 2)
   tax_amount        Decimal       @default(0) @db.Decimal(12, 2)
   total             Decimal       @db.Decimal(12, 2)
-
-  purchase_order    PurchaseOrder @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
   product           Product       @relation(fields: [product_id], references: [id])
+  purchase_order    PurchaseOrder @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
 
   @@map("purchase_order_items")
-}
-
-enum TransferStatus {
-  DRAFT
-  IN_TRANSIT
-  RECEIVED
-  CANCELLED
 }
 
 model StockTransfer {
@@ -364,10 +316,9 @@ model StockTransfer {
   created_at            DateTime            @default(now())
   updated_at            DateTime            @updatedAt
   created_by            String?
-
-  source_godown         Godown              @relation("SourceGodown", fields: [source_godown_id], references: [id])
-  destination_godown    Godown              @relation("DestGodown", fields: [destination_godown_id], references: [id])
   items                 StockTransferItem[]
+  destination_godown    Godown              @relation("DestGodown", fields: [destination_godown_id], references: [id])
+  source_godown         Godown              @relation("SourceGodown", fields: [source_godown_id], references: [id])
 
   @@map("stock_transfers")
 }
@@ -378,9 +329,8 @@ model StockTransferItem {
   product_id  String
   quantity    Decimal       @db.Decimal(12, 2)
   unit_cost   Decimal       @default(0) @db.Decimal(12, 2)
-
-  transfer    StockTransfer @relation(fields: [transfer_id], references: [id], onDelete: Cascade)
   product     Product       @relation(fields: [product_id], references: [id])
+  transfer    StockTransfer @relation(fields: [transfer_id], references: [id], onDelete: Cascade)
 
   @@map("stock_transfer_items")
 }
@@ -394,9 +344,8 @@ model StockAdjustment {
   notes             String?
   created_at        DateTime              @default(now())
   created_by        String?
-
-  godown            Godown                @relation(fields: [godown_id], references: [id])
   items             StockAdjustmentItem[]
+  godown            Godown                @relation(fields: [godown_id], references: [id])
 
   @@map("stock_adjustments")
 }
@@ -409,7 +358,6 @@ model StockAdjustmentItem {
   counted_qty   Decimal         @db.Decimal(12, 2)
   diff_qty      Decimal         @db.Decimal(12, 2)
   unit_cost     Decimal         @default(0) @db.Decimal(12, 2)
-
   adjustment    StockAdjustment @relation(fields: [adjustment_id], references: [id], onDelete: Cascade)
   product       Product         @relation(fields: [product_id], references: [id])
 
@@ -417,25 +365,24 @@ model StockAdjustmentItem {
 }
 
 model Invoice {
-  id                 String     @id @default(uuid())
-  invoice_number     String     @unique
-  invoice_type       String     @default("TAX_INVOICE")
+  id                 String      @id @default(uuid())
+  invoice_number     String      @unique
+  invoice_type       String      @default("TAX_INVOICE")
   reference_order_id String?
   customer_id        String?
   godown_id          String
-  invoice_date       DateTime   @default(now())
+  invoice_date       DateTime    @default(now())
   due_date           DateTime?
-  status             String     @default("UNPAID")
-  subtotal           Decimal    @default(0) @db.Decimal(12, 2)
-  tax_total          Decimal    @default(0) @db.Decimal(12, 2)
-  grand_total        Decimal    @default(0) @db.Decimal(12, 2)
-  paid_amount        Decimal    @default(0) @db.Decimal(12, 2)
-  balance_amount     Decimal    @default(0) @db.Decimal(12, 2)
-  created_at         DateTime   @default(now())
-
-  sales_order        SalesOrder? @relation(fields: [reference_order_id], references: [id])
+  status             String      @default("UNPAID")
+  subtotal           Decimal     @default(0) @db.Decimal(12, 2)
+  tax_total          Decimal     @default(0) @db.Decimal(12, 2)
+  grand_total        Decimal     @default(0) @db.Decimal(12, 2)
+  paid_amount        Decimal     @default(0) @db.Decimal(12, 2)
+  balance_amount     Decimal     @default(0) @db.Decimal(12, 2)
+  created_at         DateTime    @default(now())
   customer           Customer?   @relation(fields: [customer_id], references: [id])
   godown             Godown      @relation(fields: [godown_id], references: [id])
+  sales_order        SalesOrder? @relation(fields: [reference_order_id], references: [id])
   payments           Payment[]
 
   @@map("invoices")
@@ -453,10 +400,47 @@ model Payment {
   reference_number String?
   notes            String?
   created_at       DateTime  @default(now())
-
-  invoice          Invoice?  @relation(fields: [invoice_id], references: [id])
   customer         Customer? @relation(fields: [customer_id], references: [id])
+  invoice          Invoice?  @relation(fields: [invoice_id], references: [id])
   supplier         Supplier? @relation(fields: [supplier_id], references: [id])
 
   @@map("payments")
+}
+
+enum UserRole {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+enum MovementType {
+  PURCHASE_RECEIPT
+  SALES_DELIVERY
+  TRANSFER_OUT
+  TRANSFER_IN
+  ADJUSTMENT_ADD
+  ADJUSTMENT_REDUCE
+  RETURN_IN
+  RETURN_OUT
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  DELIVERED
+  CANCELLED
+}
+
+enum POStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+enum TransferStatus {
+  DRAFT
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
 }
