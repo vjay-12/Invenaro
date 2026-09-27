@@ -21,8 +21,13 @@ interface LicenseContextType {
 const LicenseContext = createContext<LicenseContextType | undefined>(undefined);
 
 export const LicenseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [plan, setPlan] = useState<PlanType>('business');
-  const [modules, setModules] = useState<PlanModules>(DEFAULT_PLAN_MODULES.business);
+  const [plan, setPlan] = useState<PlanType>(() => {
+    return (localStorage.getItem('invenza_license_plan') as PlanType) || 'basic';
+  });
+  const [modules, setModules] = useState<PlanModules>(() => {
+    const savedPlan = (localStorage.getItem('invenza_license_plan') as PlanType) || 'basic';
+    return DEFAULT_PLAN_MODULES[savedPlan] || DEFAULT_PLAN_MODULES.basic;
+  });
   const [state, setState] = useState<LicenseOperationalState>('active');
   const [licenseExpiresAt, setLicenseExpiresAt] = useState<string | null>(null);
   const [graceEndsAt, setGraceEndsAt] = useState<string | null>(null);
@@ -40,6 +45,7 @@ export const LicenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setLicenseExpiresAt(data.licenseExpiresAt || null);
         setGraceEndsAt(data.graceEndsAt || null);
         setMessage(data.message || '');
+        localStorage.setItem('invenza_license_plan', data.plan);
       }
     } catch (e) {
       console.warn('Could not retrieve license status, falling back to defaults:', e);
