@@ -1068,7 +1068,7 @@ test('SECURITY-26: Never trust client-provided role for authorization', async ()
 
 test('SETUP-27: Unauthenticated request to /auth/me returns 401', async () => {
   const { authMiddleware } = await import('./middlewares/auth.js');
-  const { req, res, next } = createMockReqRes({
+  const { req, res } = createMockReqRes({
     method: 'GET',
     path: '/auth/me',
     cookies: {},
@@ -1083,7 +1083,7 @@ test('SETUP-27: Unauthenticated request to /auth/me returns 401', async () => {
 
 test('SETUP-28: Stale session cookie against empty database returns 401 and clears cookie', async () => {
   const { authMiddleware } = await import('./middlewares/auth.js');
-  const { req, res, next } = createMockReqRes({
+  const { req, res } = createMockReqRes({
     method: 'GET',
     path: '/auth/me',
     cookies: { invenaro_session: 'stale-token-from-wiped-db' },
