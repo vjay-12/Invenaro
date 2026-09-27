@@ -82,7 +82,7 @@ router.post('/', async (req, res): Promise<void> => {
     let subtotal = 0;
     let taxTotal = 0;
 
-    const computedItems = items.map((it) => {
+    const computedItems = items.map((it: any) => {
       const itemSubtotal = it.quantity * it.unit_cost;
       const itemTax = (itemSubtotal * (it.tax_rate || 0)) / 100;
       const itemTotal = itemSubtotal + itemTax;

@@ -5,7 +5,8 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "prisma generate --schema=../../prisma/schema.prisma && tsc",
+    "build:deps": "npm --prefix ../../packages/types run build && npm --prefix ../../packages/validation run build && npm --prefix ../../packages/shared run build",
+    "build": "npm run build:deps && prisma generate --schema=../../prisma/schema.prisma && tsc",
     "start": "node dist/index.js"
   },
   "dependencies": {

@@ -87,7 +87,7 @@ router.post('/', async (req, res): Promise<void> => {
     let taxTotal = 0;
     let discountTotal = 0;
 
-    const computedItems = items.map((it) => {
+    const computedItems = items.map((it: any) => {
       const itemSubtotal = it.quantity * it.unit_price;
       const itemDiscount = it.discount || 0;
       const taxable = Math.max(0, itemSubtotal - itemDiscount);
