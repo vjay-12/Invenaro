@@ -1,6 +1,7 @@
 {
   "name": "invenaro",
   "version": "1.0.0",
+  "type": "module",
   "private": true,
   "description": "Invenaro - Dedicated deployment inventory & stock control platform",
   "workspaces": [

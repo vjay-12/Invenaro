@@ -1,5 +1,7 @@
 {
   "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "apps/web/dist",
   "crons": [
     {
       "path": "/api/cron/license-refresh",
@@ -9,11 +11,15 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/apps/api/src/server.ts"
+      "destination": "/api"
+    },
+    {
+      "source": "/health",
+      "destination": "/api"
     },
     {
       "source": "/(.*)",
-      "destination": "/apps/web/dist/$1"
+      "destination": "/index.html"
     }
   ]
 }
