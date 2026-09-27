@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:deps": "npm --prefix ../../packages/types run build && npm --prefix ../../packages/validation run build && npm --prefix ../../packages/shared run build",
+    "build": "npm run build:deps && tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
   },
