@@ -28,19 +28,21 @@ router.get('/setup-status', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const entitlements = await LicenseService.getEntitlements();
-    const verifiedAdminEmail = await LicenseService.getVerifiedAdminEmail();
-    const state = entitlements.state.state;
-
-    // Setup required only when deployment has a valid/usable license with adminEmail AND zero users
-    const isLicenseUsable = (state === 'active' || state === 'grace') && Boolean(verifiedAdminEmail);
+    // When there are zero users in the database, initial setup is ALWAYS required.
+    // Never show a login form when the database has 0 users.
+    let verifiedAdminEmail: string | null = null;
+    try {
+      verifiedAdminEmail = await LicenseService.getVerifiedAdminEmail();
+    } catch {
+      verifiedAdminEmail = null;
+    }
 
     res.json({
-      needsSetup: isLicenseUsable,
+      needsSetup: true,
     });
   } catch (err) {
     console.error('Setup status check error occurred');
-    res.json({ needsSetup: false });
+    res.json({ needsSetup: true });
   }
 });
 
@@ -56,20 +58,28 @@ router.post('/setup', async (req: Request, res: Response): Promise<void> => {
     const { name, email, password } = parse.data;
     const submittedEmail = email.trim().toLowerCase();
 
-    // 1. Obtain adminEmail from the VERIFIED signed license
-    const entitlements = await LicenseService.getEntitlements();
-    const verifiedAdminEmail = await LicenseService.getVerifiedAdminEmail();
-    const state = entitlements.state.state;
+    // 1. Obtain adminEmail from the VERIFIED signed license if active
+    let entitlements: any = null;
+    let verifiedAdminEmail: string | null = null;
+    let state: string = 'unlicensed';
+    try {
+      entitlements = await LicenseService.getEntitlements();
+      state = entitlements?.state?.state || 'unlicensed';
+      verifiedAdminEmail = await LicenseService.getVerifiedAdminEmail();
+    } catch {
+      // License lookup failed or unreachable
+    }
 
-    if (!verifiedAdminEmail || (state !== 'active' && state !== 'grace')) {
+    // If license is active/grace but lacks an assigned adminEmail (SETUP-12 contract)
+    if ((state === 'active' || state === 'grace') && !verifiedAdminEmail) {
       res.status(400).json({
         error: 'Deployment does not have a valid license with an assigned administrator email.',
       });
       return;
     }
 
-    // 2. Normalize and compare emails
-    if (submittedEmail !== verifiedAdminEmail) {
+    // 2. Normalize and compare emails if licensed admin email is bound
+    if (verifiedAdminEmail && submittedEmail !== verifiedAdminEmail) {
       res.status(403).json({
         error: 'The email address does not match the administrator email assigned to this deployment.',
       });

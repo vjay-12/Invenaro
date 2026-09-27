@@ -254,6 +254,15 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
   };
 
   const renderCardContent = () => {
+    if (isCheckingSetup) {
+      return (
+        <div className={isModal ? 'w-full py-12 flex flex-col items-center justify-center' : 'bg-white dark:bg-[#131924] border border-slate-200 dark:border-[#1E2636] rounded-xl p-12 shadow-card flex flex-col items-center justify-center'}>
+          <div className="w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Verifying system initialization...</p>
+        </div>
+      );
+    }
+
     if (needsSetup) {
       return (
         <div className={isModal ? 'w-full' : 'bg-white dark:bg-[#131924] border border-slate-200 dark:border-[#1E2636] rounded-xl p-6 sm:p-8 shadow-card'}>
