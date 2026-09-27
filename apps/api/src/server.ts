@@ -35,8 +35,8 @@ app.use(cookieParser());
 app.use(express.json({ limit: '5mb' }));
 
 // Health check endpoint
-app.get(['/health', '/api/health', '/api/v1/health'], (req, res) => {
-  res.json({ status: 'ok', platform: 'Invenaro', timestamp: new Date().toISOString() });
+app.get(['/', '/health', '/api/health', '/api/v1/health'], (req, res) => {
+  res.json({ status: 'ok', platform: 'Invenaro API', timestamp: new Date().toISOString() });
 });
 
 // Enforce operational license state globally (blocks mutations when read_only or unlicensed)
