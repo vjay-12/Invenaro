@@ -47,7 +47,7 @@ interface InventoryContextType {
   deleteProducts: (ids: string[]) => void;
   clearAllProducts: (options?: { performedBy?: string; password?: string; otp?: string }) => Promise<void>;
   clearLedger: (options?: { requestedBy?: string; approvedBy?: string }) => Promise<void>;
-  createPurchaseOrder: (po: Omit<PurchaseOrder, 'id' | 'poNumber' | 'status'>) => void;
+  createPurchaseOrder: (po: Omit<PurchaseOrder, 'id' | 'poNumber' | 'status'>) => Promise<void>;
   receiveGoods: (poId: string, receivedNotes?: string) => void;
   createSalesOrder: (so: Omit<SalesOrder, 'id' | 'soNumber' | 'status'>) => void;
   fulfillSalesOrder: (
@@ -140,22 +140,41 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     let total = 0;
     const locMap: Record<string, number> = {};
     prodMovements.forEach(m => {
+      const type = String(m.movementType || '').toUpperCase();
       const qty = Math.abs(m.quantity);
-      if (m.movementType === 'IN') {
+      if (
+        type === 'IN' ||
+        type === 'PURCHASE_RECEIPT' ||
+        type === 'ADJUSTMENT_ADD' ||
+        type === 'RETURN_IN'
+      ) {
         total += qty;
         if (m.locationId) locMap[m.locationId] = (locMap[m.locationId] || 0) + qty;
-      } else if (m.movementType === 'OUT') {
+      } else if (
+        type === 'OUT' ||
+        type === 'SALES_DELIVERY' ||
+        type === 'ADJUSTMENT_REDUCE' ||
+        type === 'RETURN_OUT'
+      ) {
         total -= qty;
         if (m.locationId) locMap[m.locationId] = (locMap[m.locationId] || 0) - qty;
-      } else if (m.movementType === 'ADJUST') {
+      } else if (type === 'ADJUST') {
         total += m.quantity; // signed delta
         if (m.locationId) locMap[m.locationId] = (locMap[m.locationId] || 0) + m.quantity;
-      } else if (m.movementType === 'TRANSFER') {
-        if (m.locationId) {
-          locMap[m.locationId] = (locMap[m.locationId] || 0) - qty;
-        }
-        if (m.targetLocationId) {
-          locMap[m.targetLocationId] = (locMap[m.targetLocationId] || 0) + qty;
+      } else if (type === 'TRANSFER' || type === 'TRANSFER_OUT' || type === 'TRANSFER_IN') {
+        if (type === 'TRANSFER_IN') {
+          total += qty;
+          if (m.locationId) locMap[m.locationId] = (locMap[m.locationId] || 0) + qty;
+        } else if (type === 'TRANSFER_OUT') {
+          total -= qty;
+          if (m.locationId) locMap[m.locationId] = (locMap[m.locationId] || 0) - qty;
+        } else {
+          if (m.locationId) {
+            locMap[m.locationId] = (locMap[m.locationId] || 0) - qty;
+          }
+          if (m.targetLocationId) {
+            locMap[m.targetLocationId] = (locMap[m.targetLocationId] || 0) + qty;
+          }
         }
       }
     });
@@ -266,12 +285,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const backendProds = await api.getProducts();
         if (backendProds && Array.isArray(backendProds)) {
           const mapped: Product[] = backendProds.map((bp: any) => {
+            const locStock = bp.location_stock || {};
             const { currentStock, locationStock } = computeStock(
               bp.id,
               bp.sku,
               dbMovements,
               Number(bp.current_stock || 0),
-              {},
+              locStock,
               activeDefaultLocId
             );
 
@@ -733,8 +753,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       );
       const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId;
       await syncBackend(activeTid);
-    } catch (err) {
-      console.warn('Backend bulk import warning:', err);
+    } catch (err: any) {
+      console.error('Backend bulk import error:', err);
+      throw new Error(err.message || 'Failed to save imported products to database.');
     }
 
     return newProds.length;
@@ -941,11 +962,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const locUuid = resolveLocationUuid(data.targetLocationId);
       await api.createPurchaseOrder({
         supplier_name: data.supplierName,
+        godown_id: locUuid,
         target_location_id: locUuid,
         order_date: data.orderDate,
         notes: data.notes,
         items: data.items.map(it => ({
           product_id: resolveProductUuid(it.productId),
+          quantity: it.orderedQty,
           ordered_qty: it.orderedQty,
           unit_cost: it.unitCost,
         })),
@@ -954,6 +977,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       await syncBackend(activeTid);
     } catch (err) {
       console.warn('Backend PO creation warning:', err);
+      throw err;
     }
   };
 

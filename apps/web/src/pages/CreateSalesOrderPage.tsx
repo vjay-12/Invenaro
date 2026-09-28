@@ -123,6 +123,15 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
   const [sourceLocationId, setSourceLocationId] = useState(
     selectedLocationId !== 'all' ? selectedLocationId : (locations[0]?.id || '')
   );
+
+  useEffect(() => {
+    if (selectedLocationId !== 'all') {
+      setSourceLocationId(selectedLocationId);
+    } else if (locations.length > 0) {
+      setSourceLocationId((prev) => prev || locations[0].id);
+    }
+  }, [locations, selectedLocationId]);
+
   const [orderDate, setOrderDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [soNotes, setSoNotes] = useState('');
 
@@ -184,7 +193,9 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
         (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
       );
       const inStockCandidate = sorted.find((p) => {
-        const stock = sourceLocationId ? (p.locationStock?.[sourceLocationId] ?? 0) : (p.currentStock ?? 0);
+        const stock = (sourceLocationId && p.locationStock && p.locationStock[sourceLocationId] !== undefined)
+          ? p.locationStock[sourceLocationId]
+          : (p.currentStock ?? 0);
         return stock > 0;
       });
 
@@ -320,8 +331,8 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
   const stockShortages = lineItems
     .map((it) => {
       const prod = products.find((p) => p.id === it.productId);
-      const avail = sourceLocationId
-        ? (prod?.locationStock?.[sourceLocationId] ?? 0)
+      const avail = (sourceLocationId && prod?.locationStock && prod.locationStock[sourceLocationId] !== undefined)
+        ? prod.locationStock[sourceLocationId]
         : (prod?.currentStock ?? 0);
       return {
         sku: it.sku || prod?.sku || 'Item',
@@ -341,11 +352,15 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
     );
     const existingIds = new Set(lineItems.map((it) => it.productId));
     const inStockUnused = sorted.find((p) => {
-      const stock = sourceLocationId ? (p.locationStock?.[sourceLocationId] ?? 0) : (p.currentStock ?? 0);
+      const stock = (sourceLocationId && p.locationStock && p.locationStock[sourceLocationId] !== undefined)
+        ? p.locationStock[sourceLocationId]
+        : (p.currentStock ?? 0);
       return stock > 0 && !existingIds.has(p.id);
     });
     const candidate = inStockUnused || sorted.find((p) => {
-      const stock = sourceLocationId ? (p.locationStock?.[sourceLocationId] ?? 0) : (p.currentStock ?? 0);
+      const stock = (sourceLocationId && p.locationStock && p.locationStock[sourceLocationId] !== undefined)
+        ? p.locationStock[sourceLocationId]
+        : (p.currentStock ?? 0);
       return stock > 0;
     });
 
@@ -476,29 +491,21 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
 
   const handleSubmitSO = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerName.trim() || !sourceLocationId || lineItems.length === 0) {
-      alert('Please fill in Customer Name, Fulfillment Warehouse, and at least one Line Item.');
+    const effectiveLocationId = sourceLocationId || locations[0]?.id || 'default-godown';
+    if (!customerName.trim() || lineItems.length === 0) {
+      alert('Please fill in Customer Name and at least one Line Item.');
       return;
     }
 
     const hasInvalidItem = lineItems.some((it) => !it.productId || (it.orderedQty || 0) <= 0);
     if (hasInvalidItem) {
-      showToast('Please select a product and enter a valid quantity for each line item.', 'error');
-      return;
-    }
-
-    if (stockShortages.length > 0) {
-      const first = stockShortages[0];
-      showToast(
-        `Cannot create order — insufficient stock for ${first.sku} (${first.availableStock} in stock, ${first.orderedQty} requested).`,
-        'error'
-      );
+      alert('Please select a product and enter a valid quantity for each line item.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const sourceLoc = locations.find((l) => l.id === sourceLocationId);
+      const sourceLoc = locations.find((l) => l.id === effectiveLocationId);
       const isShipSeparate = hasSeparateShipping && Boolean(shippingAddress.trim());
       const effectiveShipState = isShipSeparate ? shippingState : billingState;
       const effectiveShipCode = isShipSeparate ? shippingStateCode : billingStateCode;
@@ -514,8 +521,8 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
         shippingStateCode: isShipSeparate ? shippingStateCode : undefined,
         state: effectiveShipState,
         stateCode: effectiveShipCode,
-        sourceLocationId,
-        sourceLocationName: sourceLoc?.name || 'Warehouse',
+        sourceLocationId: effectiveLocationId,
+        sourceLocationName: sourceLoc?.name || 'Main Godown',
         orderDate,
         items: lineItems,
         totalAmount: taxBreakdown.grandTotal,
@@ -893,8 +900,8 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
           <div className="space-y-2.5">
             {lineItems.map((item, index) => {
               const prod = products.find((p) => p.id === item.productId);
-              const availableStock = sourceLocationId
-                ? (prod?.locationStock?.[sourceLocationId] ?? 0)
+              const availableStock = (sourceLocationId && prod?.locationStock && prod.locationStock[sourceLocationId] !== undefined)
+                ? prod.locationStock[sourceLocationId]
                 : (prod?.currentStock ?? 0);
               const remainingStock = availableStock - (item.orderedQty || 0);
               const isOutOfStock = Boolean(prod && availableStock === 0);
@@ -1100,21 +1107,21 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
 
         {/* Section 5: Warehouse Shortage Warning Banner */}
         {stockShortages.length > 0 && (
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs">
-            <IconAlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs">
+            <IconAlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
             <div className="space-y-1 flex-1">
-              <div className="font-bold text-rose-800 dark:text-rose-300">
-                Cannot create order &mdash; insufficient stock in {currentSourceLoc?.name || 'selected warehouse'}:
+              <div className="font-bold text-amber-900 dark:text-amber-200">
+                Low Stock / Backorder Notice for {currentSourceLoc?.name || 'selected warehouse'}:
               </div>
               <div className="text-[11px] leading-relaxed">
                 {stockShortages.map((s) => (
                   <span key={s.sku} className="inline-block mr-3 font-mono">
-                    &bull; <strong>{s.sku}</strong> ({s.name}): {s.isZero ? '0 in stock' : `only ${s.availableStock} ${s.unit} available`}, {s.orderedQty} requested
+                    &bull; <strong>{s.sku}</strong> ({s.name}): {s.isZero ? '0 currently in stock' : `only ${s.availableStock} ${s.unit} available`}, {s.orderedQty} requested
                   </span>
                 ))}
               </div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                Order creation is blocked until inventory is replenished or item quantities are adjusted.
+              <div className="text-[10px] text-amber-700 dark:text-amber-400">
+                This order will be registered as confirmed and can be fulfilled once sufficient inventory is received or replenished.
               </div>
             </div>
           </div>
@@ -1131,9 +1138,8 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || stockShortages.length > 0}
+            disabled={isSubmitting}
             className="rounded-lg bg-teal-700 hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed px-6 py-2.5 text-xs font-bold text-white shadow-subtle transition-colors flex items-center gap-2"
-            title={stockShortages.length > 0 ? 'Cannot create order — resolve stock shortages before proceeding' : undefined}
           >
             {isSubmitting ? (
               <span>Creating Order...</span>

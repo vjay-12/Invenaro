@@ -99,7 +99,10 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
           (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
         );
         const inStockCandidate = sorted.find((p) => {
-          const stock = initialWarehouseId || selectedLocationId !== 'all' ? (p.locationStock?.[initialWarehouseId || selectedLocationId] ?? 0) : (p.currentStock ?? 0);
+          const loc = initialWarehouseId || selectedLocationId;
+          const stock = loc && loc !== 'all' && p.locationStock?.[loc] !== undefined
+            ? p.locationStock[loc]
+            : (p.currentStock ?? 0);
           return stock > 0;
         });
 
@@ -137,8 +140,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
   const stockShortages = lineItems
     .map((it) => {
       const prod = products.find((p) => p.id === it.productId);
-      const avail = sourceLocationId
-        ? (prod?.locationStock?.[sourceLocationId] ?? 0)
+      const avail = (sourceLocationId && prod?.locationStock && prod.locationStock[sourceLocationId] !== undefined)
+        ? prod.locationStock[sourceLocationId]
         : (prod?.currentStock ?? 0);
       return {
         sku: it.sku || prod?.sku || 'Item',
@@ -158,11 +161,15 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     );
     const existingIds = new Set(lineItems.map((it) => it.productId));
     const inStockUnused = sorted.find((p) => {
-      const stock = sourceLocationId ? (p.locationStock?.[sourceLocationId] ?? 0) : (p.currentStock ?? 0);
+      const stock = (sourceLocationId && p.locationStock && p.locationStock[sourceLocationId] !== undefined)
+        ? p.locationStock[sourceLocationId]
+        : (p.currentStock ?? 0);
       return stock > 0 && !existingIds.has(p.id);
     });
     const candidate = inStockUnused || sorted.find((p) => {
-      const stock = sourceLocationId ? (p.locationStock?.[sourceLocationId] ?? 0) : (p.currentStock ?? 0);
+      const stock = (sourceLocationId && p.locationStock && p.locationStock[sourceLocationId] !== undefined)
+        ? p.locationStock[sourceLocationId]
+        : (p.currentStock ?? 0);
       return stock > 0;
     });
 
@@ -271,43 +278,51 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     }
   };
 
-  const handleSubmitSO = (e: React.FormEvent) => {
+  const handleSubmitSO = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerName || !sourceLocationId || lineItems.length === 0) return;
-
-    if (stockShortages.length > 0) {
+    if (!customerName.trim()) {
+      alert('Please fill in Customer Name.');
+      return;
+    }
+    if (lineItems.length === 0 || !lineItems[0].productId) {
+      alert('Please select at least one Product Line Item.');
       return;
     }
 
-    const sourceLoc = locations.find((l) => l.id === sourceLocationId);
+    const resolvedLocationId = sourceLocationId || locations[0]?.id || 'default-godown';
+    const sourceLoc = locations.find((l) => l.id === resolvedLocationId);
     const isShipSeparate = hasSeparateShipping && Boolean(shippingAddress.trim());
     const effectiveShipState = isShipSeparate ? shippingState : billingState;
     const effectiveShipCode = isShipSeparate ? shippingStateCode : billingStateCode;
 
     const totalAmount = calculateGrandTotal();
 
-    createSalesOrder({
-      customerName,
-      customerGstin: customerGstin || undefined,
-      billingAddress: billingAddress || undefined,
-      shippingAddress: isShipSeparate ? shippingAddress : (billingAddress || undefined),
-      billingState: billingState,
-      billingStateCode: billingStateCode,
-      shippingState: isShipSeparate ? shippingState : undefined,
-      shippingStateCode: isShipSeparate ? shippingStateCode : undefined,
-      state: effectiveShipState,
-      stateCode: effectiveShipCode,
-      sourceLocationId,
-      sourceLocationName: sourceLoc?.name || 'Warehouse',
-      orderDate,
-      items: lineItems,
-      totalAmount,
-      notes: soNotes,
-    });
+    try {
+      await createSalesOrder({
+        customerName: customerName.trim(),
+        customerGstin: customerGstin || undefined,
+        billingAddress: billingAddress || undefined,
+        shippingAddress: isShipSeparate ? shippingAddress : (billingAddress || undefined),
+        billingState: billingState,
+        billingStateCode: billingStateCode,
+        shippingState: isShipSeparate ? shippingState : undefined,
+        shippingStateCode: isShipSeparate ? shippingStateCode : undefined,
+        state: effectiveShipState,
+        stateCode: effectiveShipCode,
+        sourceLocationId: resolvedLocationId,
+        sourceLocationName: sourceLoc?.name || 'Main Godown',
+        orderDate,
+        items: lineItems,
+        totalAmount,
+        notes: soNotes,
+      });
 
-    onSuccess?.({ customerName, totalAmount });
-    resetForm();
-    onClose();
+      onSuccess?.({ customerName, totalAmount });
+      resetForm();
+      onClose();
+    } catch (err: any) {
+      alert('Failed to create sales order: ' + (err.message || 'Unknown error'));
+    }
   };
 
   return (
@@ -698,22 +713,22 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
 
         {/* Warehouse Stock Shortage Alert Banner */}
         {stockShortages.length > 0 && (
-          <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs">
-            <IconAlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+          <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs">
+            <IconAlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
             <div className="space-y-1 flex-1">
-              <div className="font-bold text-rose-800 dark:text-rose-300">
-                Cannot create order &mdash; insufficient stock in {currentSourceLoc?.name || 'selected warehouse'}:
+              <div className="font-bold text-amber-900 dark:text-amber-200">
+                Low Stock / Backorder Notice for {currentSourceLoc?.name || 'selected warehouse'}:
               </div>
               <div className="text-[11px] leading-relaxed">
                 {stockShortages.map((s) => (
                   <span key={s.sku} className="inline-block mr-2 font-mono">
                     &bull; <strong>{s.sku}</strong> ({s.name}):{' '}
-                    {s.isZero ? '0 in stock' : `only ${s.availableStock} ${s.unit} available`}, {s.orderedQty} requested
+                    {s.isZero ? '0 currently in stock' : `only ${s.availableStock} ${s.unit} available`}, {s.orderedQty} requested
                   </span>
                 ))}
               </div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                Order creation is blocked until inventory is replenished or item quantities are adjusted.
+              <div className="text-[10px] text-amber-700 dark:text-amber-400">
+                Order will be registered as confirmed and can be fulfilled once inventory is replenished.
               </div>
             </div>
           </div>
@@ -729,9 +744,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
           </button>
           <button
             type="submit"
-            disabled={stockShortages.length > 0}
             className="rounded-lg bg-teal-700 hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-2 text-xs font-bold text-white shadow-subtle transition-colors"
-            title={stockShortages.length > 0 ? 'Cannot create order — resolve stock shortages before proceeding' : undefined}
           >
             Create Sales Order
           </button>

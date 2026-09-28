@@ -10,7 +10,7 @@ router.use(authMiddleware);
 
 router.get('/', async (req, res): Promise<void> => {
   try {
-    const godowns = await prisma.godown.findMany({
+    let godowns = await prisma.godown.findMany({
       orderBy: { created_at: 'asc' },
       include: {
         _count: {
@@ -20,6 +20,26 @@ router.get('/', async (req, res): Promise<void> => {
         },
       },
     });
+
+    if (godowns.length === 0) {
+      const defaultGodown = await prisma.godown.create({
+        data: {
+          name: 'Main Central Godown',
+          code: 'MAIN-01',
+          is_default: true,
+          is_active: true,
+        },
+        include: {
+          _count: {
+            select: {
+              stock_balances: true,
+            },
+          },
+        },
+      });
+      godowns = [defaultGodown];
+    }
+
     res.json(godowns);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch godowns' });

@@ -49,11 +49,14 @@ const mountRoutes = (prefix: string) => {
   app.use(`${prefix}/license`, licenseRouter);
   app.use(`${prefix}/cron`, cronRouter);
   app.use(`${prefix}/godowns`, godownsRouter);
+  app.use(`${prefix}/locations`, godownsRouter);
   app.use(`${prefix}/products`, productsRouter);
   app.use(`${prefix}/customers`, customersRouter);
   app.use(`${prefix}/suppliers`, suppliersRouter);
   app.use(`${prefix}/sales-orders`, salesOrdersRouter);
+  app.use(`${prefix}/orders/sales-orders`, salesOrdersRouter);
   app.use(`${prefix}/purchase-orders`, purchaseOrdersRouter);
+  app.use(`${prefix}/orders/purchase-orders`, purchaseOrdersRouter);
   app.use(`${prefix}/transfers`, transfersRouter);
   app.use(`${prefix}/adjustments`, adjustmentsRouter);
   app.use(`${prefix}/ledger`, ledgerRouter);

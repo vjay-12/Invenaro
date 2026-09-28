@@ -51,8 +51,8 @@ export const PurchaseOrders: React.FC = () => {
   useEffect(() => {
     if (selectedLocationId !== 'all') {
       setTargetLocationId(selectedLocationId);
-    } else if (!targetLocationId && locations.length > 0) {
-      setTargetLocationId(locations[0].id);
+    } else if (locations.length > 0) {
+      setTargetLocationId((prev) => prev || locations[0].id);
     }
   }, [locations, selectedLocationId]);
 
@@ -110,26 +110,43 @@ export const PurchaseOrders: React.FC = () => {
   const calculateGrandTotal = () =>
     lineItems.reduce((acc, it) => acc + it.orderedQty * it.unitCost, 0);
 
-  const handleSubmitPO = (e: React.FormEvent) => {
+  const handleSubmitPO = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supplierName || !targetLocationId || lineItems.length === 0) return;
+    if (!supplierName.trim()) {
+      alert('Please enter a supplier or vendor name.');
+      return;
+    }
 
-    const targetLoc = locations.find((l) => l.id === targetLocationId);
+    const resolvedLocationId = targetLocationId || (locations[0]?.id || 'default-godown');
+    if (!resolvedLocationId && locations.length > 0) {
+      setTargetLocationId(locations[0].id);
+    }
 
-    createPurchaseOrder({
-      supplierName,
-      targetLocationId,
-      targetLocationName: targetLoc?.name || 'Warehouse',
-      orderDate,
-      items: lineItems,
-      totalAmount: calculateGrandTotal(),
-      notes: poNotes,
-    });
+    if (lineItems.length === 0 || !lineItems[0].productId) {
+      alert('Please select at least one product.');
+      return;
+    }
 
-    setIsCreateModalOpen(false);
-    setSupplierName('');
-    setPoNotes('');
-    setTargetLocationId(selectedLocationId !== 'all' ? selectedLocationId : (locations[0]?.id || ''));
+    const targetLoc = locations.find((l) => l.id === (resolvedLocationId || targetLocationId));
+
+    try {
+      await createPurchaseOrder({
+        supplierName: supplierName.trim(),
+        targetLocationId: resolvedLocationId,
+        targetLocationName: targetLoc?.name || 'Main Godown',
+        orderDate,
+        items: lineItems,
+        totalAmount: calculateGrandTotal(),
+        notes: poNotes,
+      });
+
+      setIsCreateModalOpen(false);
+      setSupplierName('');
+      setPoNotes('');
+      setTargetLocationId(selectedLocationId !== 'all' ? selectedLocationId : (locations[0]?.id || ''));
+    } catch (err: any) {
+      alert('Failed to create purchase order: ' + (err.message || 'Unknown error'));
+    }
   };
 
   const handleConfirmGRN = () => {

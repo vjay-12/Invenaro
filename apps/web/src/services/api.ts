@@ -47,10 +47,10 @@ export async function fetchWithFallback<T>(url: string, options?: RequestInit): 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       if (res.status === 403) {
-        throw new Error(errBody.detail || 'Access Forbidden: Company account deactivated or insufficient permissions.');
+        throw new Error(errBody.error || errBody.detail || 'Access Forbidden: Company account deactivated or insufficient permissions.');
       }
       if (options?.method && options.method !== 'GET') {
-        throw new Error(errBody.detail || `Request failed with status ${res.status}`);
+        throw new Error(errBody.error || errBody.detail || `Request failed with status ${res.status}`);
       }
       console.warn(`API response status ${res.status} on ${url}:`, errBody);
       return null;
@@ -704,12 +704,12 @@ export const api = {
       body: JSON.stringify({ reason }),
     }),
 
-  // Locations
-  getLocations: async () => fetchWithFallback<any[]>('/locations/'),
+  // Locations / Godowns
+  getLocations: async () => fetchWithFallback<any[]>('/godowns'),
   createLocation: async (data: any) =>
-    fetchWithFallback<any>('/locations/', { method: 'POST', body: JSON.stringify(data) }),
+    fetchWithFallback<any>('/godowns', { method: 'POST', body: JSON.stringify(data) }),
   updateLocation: async (id: string, data: any) =>
-    fetchWithFallback<any>(`/locations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    fetchWithFallback<any>(`/godowns/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Ledger
   getMovements: async () => fetchWithFallback<any[]>('/ledger/'),
@@ -717,41 +717,41 @@ export const api = {
     fetchWithFallback<any>('/ledger/clear-all', { method: 'DELETE' }),
 
   // Orders
-  getPurchaseOrders: async () => fetchWithFallback<any[]>('/orders/purchase-orders'),
+  getPurchaseOrders: async () => fetchWithFallback<any[]>('/purchase-orders'),
   createPurchaseOrder: async (data: any) =>
-    fetchWithFallback<any>('/orders/purchase-orders', { method: 'POST', body: JSON.stringify(data) }),
+    fetchWithFallback<any>('/purchase-orders', { method: 'POST', body: JSON.stringify(data) }),
   receiveGoodsGRN: async (poId: string, notes?: string) =>
-    fetchWithFallback<any>(`/orders/purchase-orders/${poId}/receive`, {
+    fetchWithFallback<any>(`/purchase-orders/${poId}/receive`, {
       method: 'POST',
       body: JSON.stringify({ notes }),
     }),
-  getSalesOrders: async () => fetchWithFallback<any[]>('/orders/sales-orders'),
+  getSalesOrders: async () => fetchWithFallback<any[]>('/sales-orders'),
   createSalesOrder: async (data: any) =>
-    fetchWithFallback<any>('/orders/sales-orders', { method: 'POST', body: JSON.stringify(data) }),
+    fetchWithFallback<any>('/sales-orders', { method: 'POST', body: JSON.stringify(data) }),
   fulfillSalesOrder: async (soId: string) =>
-    fetchWithFallback<any>(`/orders/sales-orders/${soId}/fulfill`, {
+    fetchWithFallback<any>(`/sales-orders/${soId}/fulfill`, {
       method: 'POST',
       body: JSON.stringify({}),
     }),
   dispatchSalesOrder: async (soId: string, dispatchedBy?: string) =>
-    fetchWithFallback<any>(`/orders/sales-orders/${soId}/dispatch`, {
+    fetchWithFallback<any>(`/sales-orders/${soId}/dispatch`, {
       method: 'POST',
       body: JSON.stringify({ dispatched_by: dispatchedBy }),
     }),
   voidSalesOrder: async (soId: string, reason: string) =>
-    fetchWithFallback<any>(`/orders/sales-orders/${soId}/void`, {
+    fetchWithFallback<any>(`/sales-orders/${soId}/void`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
   deleteSalesOrder: async (soId: string) =>
-    fetchWithFallback<any>(`/orders/sales-orders/${soId}`, {
+    fetchWithFallback<any>(`/sales-orders/${soId}`, {
       method: 'DELETE',
     }),
-    paySalesOrder: async (
+  paySalesOrder: async (
     soId: string,
     paymentData?: { payment_method?: string; payment_reference?: string; paid_at?: string }
   ) =>
-    fetchWithFallback<any>(`/orders/sales-orders/${soId}/pay`, {
+    fetchWithFallback<any>(`/sales-orders/${soId}/pay`, {
       method: 'POST',
       body: paymentData ? JSON.stringify(paymentData) : undefined,
     }),

@@ -49,7 +49,22 @@ router.get('/', async (req, res): Promise<void> => {
 
 router.post('/', async (req, res): Promise<void> => {
   try {
-    const parse = salesOrderSchema.safeParse(req.body);
+    const rawItems = Array.isArray(req.body.items)
+      ? req.body.items.map((it: any) => ({
+          ...it,
+          quantity: typeof it.quantity === 'number' ? it.quantity : Number(it.ordered_qty || it.qty || 0),
+          unit_price: typeof it.unit_price === 'number' ? it.unit_price : Number(it.price || it.rate || 0),
+          discount: typeof it.discount === 'number' ? it.discount : Number(it.discount_percent || 0),
+        }))
+      : req.body.items;
+
+    const normalizedBody = {
+      ...req.body,
+      godown_id: req.body.godown_id || req.body.source_location_id,
+      items: rawItems,
+    };
+
+    const parse = salesOrderSchema.safeParse(normalizedBody);
     if (!parse.success) {
       res.status(400).json({ error: parse.error.errors[0]?.message || 'Invalid sales order data' });
       return;
@@ -69,13 +84,27 @@ router.post('/', async (req, res): Promise<void> => {
 
     // Pick godown
     let targetGodownId = godown_id;
+    if (targetGodownId) {
+      const exists = await prisma.godown.findUnique({ where: { id: targetGodownId } });
+      if (!exists) targetGodownId = undefined;
+    }
+
     if (!targetGodownId) {
-      const defaultGodown = await prisma.godown.findFirst({ where: { is_default: true } });
-      targetGodownId = defaultGodown?.id;
-      if (!targetGodownId) {
-        res.status(400).json({ error: 'No default godown found' });
-        return;
+      let defaultGodown = await prisma.godown.findFirst({ where: { is_default: true } });
+      if (!defaultGodown) {
+        defaultGodown = await prisma.godown.findFirst();
       }
+      if (!defaultGodown) {
+        defaultGodown = await prisma.godown.create({
+          data: {
+            name: 'Main Central Godown',
+            code: 'MAIN-01',
+            is_default: true,
+            is_active: true,
+          },
+        });
+      }
+      targetGodownId = defaultGodown.id;
     }
 
     // Generate unique order number (e.g. SO-2026-0001)
@@ -87,27 +116,45 @@ router.post('/', async (req, res): Promise<void> => {
     let taxTotal = 0;
     let discountTotal = 0;
 
-    const computedItems = items.map((it: any) => {
+    const computedItems: any[] = [];
+    for (const it of items) {
+      let resolvedProdId = it.product_id;
+      let prod = await prisma.product.findUnique({ where: { id: resolvedProdId } });
+      const itemAny = it as any;
+      if (!prod && (itemAny.sku || resolvedProdId)) {
+        prod = await prisma.product.findFirst({
+          where: {
+            OR: [
+              { sku: itemAny.sku || resolvedProdId },
+              ...(itemAny.name ? [{ name: itemAny.name }] : []),
+            ],
+          },
+        });
+      }
+      if (prod) {
+        resolvedProdId = prod.id;
+      }
       const itemSubtotal = it.quantity * it.unit_price;
       const itemDiscount = it.discount || 0;
       const taxable = Math.max(0, itemSubtotal - itemDiscount);
-      const itemTax = (taxable * (it.tax_rate || 0)) / 100;
+      const taxRate = it.tax_rate || (prod ? Number(prod.tax_rate) : 0);
+      const itemTax = (taxable * taxRate) / 100;
       const itemTotal = taxable + itemTax;
 
       subtotal += itemSubtotal;
       discountTotal += itemDiscount;
       taxTotal += itemTax;
 
-      return {
-        product_id: it.product_id,
+      computedItems.push({
+        product_id: resolvedProdId,
         quantity: it.quantity,
         unit_price: it.unit_price,
         discount: itemDiscount,
-        tax_rate: it.tax_rate || 0,
+        tax_rate: taxRate,
         tax_amount: itemTax,
         total: itemTotal,
-      };
-    });
+      });
+    }
 
     const grandTotal = subtotal - discountTotal + taxTotal;
 
