@@ -965,12 +965,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         target_location_id: locUuid,
         order_date: data.orderDate,
         notes: data.notes,
-        items: data.items.map(it => ({
-          product_id: resolveProductUuid(it.productId),
-          quantity: it.orderedQty,
-          ordered_qty: it.orderedQty,
-          unit_cost: it.unitCost,
-        })),
+        items: data.items.map(it => {
+          const matchedProd = products.find(p => p.id === it.productId || p.sku === it.sku || p.sku === it.productId);
+          return {
+            product_id: matchedProd?.id && isValidUuid(matchedProd.id) ? matchedProd.id : resolveProductUuid(it.productId),
+            sku: it.sku || matchedProd?.sku,
+            name: it.name || matchedProd?.name,
+            quantity: it.orderedQty,
+            ordered_qty: it.orderedQty,
+            unit_cost: it.unitCost,
+          };
+        }),
       });
       const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId;
       await syncBackend(activeTid);
@@ -1074,12 +1079,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         source_location_id: locUuid,
         order_date: data.orderDate,
         notes: data.notes,
-        items: data.items.map(it => ({
-          product_id: resolveProductUuid(it.productId),
-          ordered_qty: it.orderedQty,
-          unit_price: it.unitPrice,
-          discount_percent: it.discountPercent || 0,
-        })),
+        items: data.items.map(it => {
+          const matchedProd = products.find(p => p.id === it.productId || p.sku === it.sku || p.sku === it.productId);
+          return {
+            product_id: matchedProd?.id && isValidUuid(matchedProd.id) ? matchedProd.id : resolveProductUuid(it.productId),
+            sku: it.sku || matchedProd?.sku,
+            name: it.name || matchedProd?.name,
+            ordered_qty: it.orderedQty,
+            quantity: it.orderedQty,
+            unit_price: it.unitPrice,
+            discount_percent: it.discountPercent || 0,
+          };
+        }),
       });
       const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId;
       await syncBackend(activeTid);

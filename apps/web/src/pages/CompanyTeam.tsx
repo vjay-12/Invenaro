@@ -142,31 +142,32 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
     try {
       setIsLoadingCustomers(true);
       const data = await api.getCustomers();
-      if (Array.isArray(data)) {
-        setCustomers(
-          data.map((c: any) => ({
-            id: c.id,
-            tenantId: c.tenant_id,
-            legalName: c.legal_name || c.name || '',
-            email: c.email,
-            phone: c.phone,
-            gstin: c.gstin,
-            billingAddress: c.billing_address,
-            billingState: c.billing_state || c.state,
-            billingStateCode: c.billing_state_code || c.state_code,
-            shippingAddress: c.shipping_address,
-            shippingState: c.shipping_state,
-            shippingStateCode: c.shipping_state_code,
-            state: c.state,
-            stateCode: c.state_code,
-            isActive: c.is_active !== false,
-            orderCount: c.order_count || 0,
-            totalRevenue: Number(c.total_revenue || 0),
-            createdAt: c.created_at,
-            updatedAt: c.updated_at,
-          }))
-        );
-      }
+      const list = Array.isArray(data)
+        ? data
+        : (data && typeof data === 'object' && Array.isArray((data as any).customers) ? (data as any).customers : []);
+      setCustomers(
+        list.map((c: any) => ({
+          id: c.id,
+          tenantId: c.tenant_id,
+          legalName: c.legal_name || c.name || c.legalName || '',
+          email: c.email,
+          phone: c.phone,
+          gstin: c.gstin,
+          billingAddress: c.billing_address || c.billingAddress,
+          billingState: c.billing_state || c.billingState || c.state,
+          billingStateCode: c.billing_state_code || c.billingStateCode || c.state_code,
+          shippingAddress: c.shipping_address || c.shippingAddress,
+          shippingState: c.shipping_state || c.shippingState,
+          shippingStateCode: c.shipping_state_code || c.shippingStateCode,
+          state: c.state || c.billing_state,
+          stateCode: c.state_code || c.billing_state_code,
+          isActive: c.isActive !== undefined ? c.isActive : (c.is_active !== false),
+          orderCount: c.order_count || c.orderCount || 0,
+          totalRevenue: Number(c.total_revenue || c.totalRevenue || 0),
+          createdAt: c.created_at || c.createdAt,
+          updatedAt: c.updated_at || c.updatedAt,
+        }))
+      );
     } catch (err: any) {
       console.error('Failed to load customers:', err);
       showToast(err.message || 'Failed to load customers', 'error');
@@ -185,7 +186,9 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
   }, []);
 
   const filteredCustomers = useMemo(() => {
-    return customers.filter((c) => {
+    const safeCusts = Array.isArray(customers) ? customers : [];
+    return safeCusts.filter((c) => {
+      if (!c) return false;
       if (customerStatusFilter === 'active' && c.isActive === false) return false;
       if (customerStatusFilter === 'archived' && c.isActive !== false) return false;
       if (!customerSearch.trim()) return true;
@@ -389,15 +392,20 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
   const [userToDelete, setUserToDelete] = useState<any | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
 
-  const filteredUsers = users.filter((u) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (u.full_name && u.full_name.toLowerCase().includes(q)) ||
-      (u.email && u.email.toLowerCase().includes(q)) ||
-      (u.role && u.role.toLowerCase().includes(q))
-    );
-  });
+  const filteredUsers = useMemo(() => {
+    const safeUsers = Array.isArray(users) ? users : [];
+    return safeUsers.filter((u) => {
+      if (!u) return false;
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        (u.full_name && u.full_name.toLowerCase().includes(q)) ||
+        (u.name && u.name.toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q)) ||
+        (u.role && u.role.toLowerCase().includes(q))
+      );
+    });
+  }, [users, searchQuery]);
 
   // Pagination State for Team
   const [currentPage, setCurrentPage] = useState(1);
@@ -443,7 +451,10 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
         api.getCompanyUsers(),
         isAdmin ? api.getEmailChangeRequests().catch(() => []) : Promise.resolve([]),
       ]);
-      setUsers(usersData || []);
+      const list = Array.isArray(usersData)
+        ? usersData
+        : (usersData && typeof usersData === 'object' && Array.isArray((usersData as any).users) ? (usersData as any).users : []);
+      setUsers(list);
       setPendingRequests(Array.isArray(requestsData) ? requestsData : []);
     } catch (err: any) {
       showToast(err.message || 'Failed to fetch team members', 'error');
@@ -463,10 +474,12 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
 
   const requestsByUserId = useMemo(() => {
     const map: Record<string, any> = {};
-    pendingRequests.forEach((req) => {
-      if (req.user_id) map[req.user_id] = req;
-      if (req.current_email) map[req.current_email.toLowerCase()] = req;
-    });
+    if (Array.isArray(pendingRequests)) {
+      pendingRequests.forEach((req) => {
+        if (req?.user_id) map[req.user_id] = req;
+        if (req?.current_email) map[req.current_email.toLowerCase()] = req;
+      });
+    }
     return map;
   }, [pendingRequests]);
 
@@ -723,7 +736,7 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
             }`}
           >
-            {customers.length}
+            {Array.isArray(customers) ? customers.length : 0}
           </span>
         </button>
 
@@ -749,7 +762,7 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
               }`}
             >
-              {users.length}
+              {Array.isArray(users) ? users.length : 0}
             </span>
           </button>
         )}

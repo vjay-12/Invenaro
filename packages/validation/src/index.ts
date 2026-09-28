@@ -75,6 +75,8 @@ export const salesOrderItemSchema = z.object({
   unit_price: z.number().min(0, 'Unit price must be non-negative'),
   discount: z.number().min(0).default(0),
   tax_rate: z.number().min(0).default(0),
+  sku: z.string().optional(),
+  name: z.string().optional(),
 });
 
 export const salesOrderSchema = z.object({
@@ -94,6 +96,8 @@ export const purchaseOrderItemSchema = z.object({
   quantity: z.number().positive('Quantity must be greater than 0'),
   unit_cost: z.number().min(0, 'Unit cost must be non-negative'),
   tax_rate: z.number().min(0).default(0),
+  sku: z.string().optional(),
+  name: z.string().optional(),
 });
 
 export const purchaseOrderSchema = z.object({

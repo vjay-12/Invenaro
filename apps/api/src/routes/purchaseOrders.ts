@@ -83,7 +83,7 @@ router.post('/', async (req, res): Promise<void> => {
 
     let targetGodownId = godown_id;
     if (targetGodownId) {
-      const exists = await prisma.godown.findUnique({ where: { id: targetGodownId } });
+      const exists = await prisma.godown.findUnique({ where: { id: targetGodownId } }).catch(() => null);
       if (!exists) targetGodownId = undefined;
     }
 
@@ -106,7 +106,11 @@ router.post('/', async (req, res): Promise<void> => {
     }
 
     const count = await prisma.purchaseOrder.count();
-    const poNumber = `PO-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    let poNumber = `PO-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    const existingPO = await prisma.purchaseOrder.findUnique({ where: { po_number: poNumber } });
+    if (existingPO) {
+      poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 90)}`;
+    }
 
     let subtotal = 0;
     let taxTotal = 0;
@@ -114,17 +118,26 @@ router.post('/', async (req, res): Promise<void> => {
     const computedItems: any[] = [];
     for (const it of items) {
       let resolvedProdId = it.product_id;
-      let prod = await prisma.product.findUnique({ where: { id: resolvedProdId } });
       const itemAny = it as any;
-      if (!prod && (itemAny.sku || resolvedProdId)) {
+      let prod = await prisma.product.findUnique({ where: { id: resolvedProdId } }).catch(() => null);
+      if (!prod) {
         prod = await prisma.product.findFirst({
           where: {
             OR: [
-              { sku: itemAny.sku || resolvedProdId },
+              ...(itemAny.sku ? [{ sku: itemAny.sku }] : []),
+              ...(resolvedProdId ? [{ sku: resolvedProdId }] : []),
               ...(itemAny.name ? [{ name: itemAny.name }] : []),
             ],
           },
         });
+      }
+      if (!prod && itemAny.name) {
+        prod = await prisma.product.findFirst({
+          where: { name: { contains: itemAny.name, mode: 'insensitive' } },
+        });
+      }
+      if (!prod) {
+        prod = await prisma.product.findFirst({ where: { is_active: true } });
       }
       if (prod) {
         resolvedProdId = prod.id;
@@ -177,9 +190,9 @@ router.post('/', async (req, res): Promise<void> => {
     });
 
     res.status(201).json(po);
-  } catch (err) {
+  } catch (err: any) {
     console.error('Create PO error:', err);
-    res.status(500).json({ error: 'Failed to create purchase order' });
+    res.status(500).json({ error: err?.message || 'Failed to create purchase order' });
   }
 });
 

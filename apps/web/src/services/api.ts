@@ -576,7 +576,12 @@ export const api = {
   },
 
   // Company Team & Users
-  getCompanyUsers: async () => fetchWithFallback<any[]>('/settings'),
+  getCompanyUsers: async () => {
+    const res = await fetchWithFallback<any>('/settings');
+    if (Array.isArray(res)) return res;
+    if (res?.users && Array.isArray(res.users)) return res.users;
+    return [];
+  },
 
   createSettingsUser: async (data: {
     name: string;
@@ -762,7 +767,10 @@ export const api = {
     if (search) params.append('search', search);
     if (statusFilter && statusFilter !== 'all') params.append('status_filter', statusFilter);
     const qs = params.toString() ? `?${params.toString()}` : '';
-    return fetchWithFallback<any[]>(`/customers${qs}`);
+    const res = await fetchWithFallback<any>(`/customers${qs}`);
+    if (Array.isArray(res)) return res;
+    if (res?.customers && Array.isArray(res.customers)) return res.customers;
+    return [];
   },
   createCustomer: async (data: any) =>
     fetchWithFallback<any>('/customers', { method: 'POST', body: JSON.stringify(data) }),

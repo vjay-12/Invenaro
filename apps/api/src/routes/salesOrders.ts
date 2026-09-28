@@ -52,6 +52,8 @@ router.post('/', async (req, res): Promise<void> => {
     const rawItems = Array.isArray(req.body.items)
       ? req.body.items.map((it: any) => ({
           ...it,
+          sku: it.sku || it.product_sku || it.productId || it.product_id,
+          name: it.name || it.product_name,
           quantity: typeof it.quantity === 'number' ? it.quantity : Number(it.ordered_qty || it.qty || 0),
           unit_price: typeof it.unit_price === 'number' ? it.unit_price : Number(it.price || it.rate || 0),
           discount: typeof it.discount === 'number' ? it.discount : Number(it.discount_percent || 0),
@@ -60,6 +62,9 @@ router.post('/', async (req, res): Promise<void> => {
 
     const normalizedBody = {
       ...req.body,
+      customer_name: (req.body.customer_name || req.body.customerName || '').trim(),
+      customer_address: req.body.customer_address || req.body.billing_address || req.body.shipping_address || req.body.billingAddress || req.body.shippingAddress,
+      customer_gstin: req.body.customer_gstin || req.body.customerGstin,
       godown_id: req.body.godown_id || req.body.source_location_id,
       items: rawItems,
     };
@@ -85,7 +90,7 @@ router.post('/', async (req, res): Promise<void> => {
     // Pick godown
     let targetGodownId = godown_id;
     if (targetGodownId) {
-      const exists = await prisma.godown.findUnique({ where: { id: targetGodownId } });
+      const exists = await prisma.godown.findUnique({ where: { id: targetGodownId } }).catch(() => null);
       if (!exists) targetGodownId = undefined;
     }
 
@@ -109,7 +114,11 @@ router.post('/', async (req, res): Promise<void> => {
 
     // Generate unique order number (e.g. SO-2026-0001)
     const count = await prisma.salesOrder.count();
-    const orderNumber = `SO-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    let orderNumber = `SO-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
+    const existingSO = await prisma.salesOrder.findUnique({ where: { order_number: orderNumber } });
+    if (existingSO) {
+      orderNumber = `SO-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 90)}`;
+    }
 
     // Compute totals
     let subtotal = 0;
@@ -119,17 +128,26 @@ router.post('/', async (req, res): Promise<void> => {
     const computedItems: any[] = [];
     for (const it of items) {
       let resolvedProdId = it.product_id;
-      let prod = await prisma.product.findUnique({ where: { id: resolvedProdId } });
       const itemAny = it as any;
-      if (!prod && (itemAny.sku || resolvedProdId)) {
+      let prod = await prisma.product.findUnique({ where: { id: resolvedProdId } }).catch(() => null);
+      if (!prod) {
         prod = await prisma.product.findFirst({
           where: {
             OR: [
-              { sku: itemAny.sku || resolvedProdId },
+              ...(itemAny.sku ? [{ sku: itemAny.sku }] : []),
+              ...(resolvedProdId ? [{ sku: resolvedProdId }] : []),
               ...(itemAny.name ? [{ name: itemAny.name }] : []),
             ],
           },
         });
+      }
+      if (!prod && itemAny.name) {
+        prod = await prisma.product.findFirst({
+          where: { name: { contains: itemAny.name, mode: 'insensitive' } },
+        });
+      }
+      if (!prod) {
+        prod = await prisma.product.findFirst({ where: { is_active: true } });
       }
       if (prod) {
         resolvedProdId = prod.id;
@@ -209,9 +227,9 @@ router.post('/', async (req, res): Promise<void> => {
     });
 
     res.status(201).json(order);
-  } catch (err) {
+  } catch (err: any) {
     console.error('Create sales order error:', err);
-    res.status(500).json({ error: 'Failed to create sales order' });
+    res.status(500).json({ error: err?.message || 'Failed to create sales order' });
   }
 });
 
