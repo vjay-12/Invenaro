@@ -394,7 +394,7 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
 
     if (raw === 'void' || raw === 'cancelled') return 'void';
     if (raw === 'paid') return 'paid';
-    if (raw === 'invoiced' || raw === 'fulfilled' || raw === 'completed' || raw === 'dispatched' || Boolean(so.invoiceId)) {
+    if (raw === 'invoiced' || raw === 'fulfilled' || raw === 'completed' || raw === 'dispatched' || raw === 'delivered' || Boolean(so.invoiceId)) {
       return isTaxOn ? 'invoiced' : 'receipted';
     }
     return 'draft';

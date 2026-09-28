@@ -8,6 +8,32 @@ const router = Router();
 
 router.use(authMiddleware);
 
+const formatOrder = (o: any) => ({
+  ...o,
+  so_number: o.order_number,
+  source_location_id: o.godown_id,
+  source_location_name: o.godown?.name || 'Main Central Godown',
+  subtotal: Number(o.subtotal),
+  tax_total: Number(o.tax_total),
+  discount_total: Number(o.discount_total),
+  grand_total: Number(o.grand_total),
+  total_amount: Number(o.grand_total),
+  invoice_id: o.invoices?.[0]?.id || null,
+  invoice_number: o.invoices?.[0]?.invoice_number || null,
+  items: (o.items || []).map((it: any) => ({
+    ...it,
+    sku: it.product?.sku || it.sku || 'SKU',
+    product_name: it.product?.name || it.name || 'Item',
+    ordered_qty: Number(it.quantity),
+    quantity: Number(it.quantity),
+    unit_price: Number(it.unit_price),
+    discount: Number(it.discount),
+    tax_rate: Number(it.tax_rate),
+    tax_amount: Number(it.tax_amount),
+    total: Number(it.total),
+  })),
+});
+
 router.get('/', async (req, res): Promise<void> => {
   try {
     const orders = await prisma.salesOrder.findMany({
@@ -15,6 +41,7 @@ router.get('/', async (req, res): Promise<void> => {
       include: {
         customer: true,
         godown: true,
+        invoices: true,
         items: {
           include: {
             product: true,
@@ -23,24 +50,7 @@ router.get('/', async (req, res): Promise<void> => {
       },
     });
 
-    const formatted = orders.map((o) => ({
-      ...o,
-      subtotal: Number(o.subtotal),
-      tax_total: Number(o.tax_total),
-      discount_total: Number(o.discount_total),
-      grand_total: Number(o.grand_total),
-      items: o.items.map((it) => ({
-        ...it,
-        quantity: Number(it.quantity),
-        unit_price: Number(it.unit_price),
-        discount: Number(it.discount),
-        tax_rate: Number(it.tax_rate),
-        tax_amount: Number(it.tax_amount),
-        total: Number(it.total),
-      })),
-    }));
-
-    res.json(formatted);
+    res.json(orders.map(formatOrder));
   } catch (err) {
     console.error('Fetch sales orders error:', err);
     res.status(500).json({ error: 'Failed to fetch sales orders' });
@@ -87,7 +97,7 @@ router.post('/', async (req, res): Promise<void> => {
       items,
     } = parse.data;
 
-    // Pick godown
+    // Pick target godown
     let targetGodownId = godown_id;
     if (targetGodownId) {
       const exists = await prisma.godown.findUnique({ where: { id: targetGodownId } }).catch(() => null);
@@ -120,38 +130,38 @@ router.post('/', async (req, res): Promise<void> => {
       orderNumber = `SO-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 90)}`;
     }
 
-    // Compute totals
+    // Batch resolve products in a single database round-trip
+    const rawProdIds = items.map((it) => it.product_id).filter(Boolean);
+    const rawSkus = items.map((it: any) => it.sku || it.product_sku).filter(Boolean);
+    const matchedProducts = await prisma.product.findMany({
+      where: {
+        OR: [
+          ...(rawProdIds.length ? [{ id: { in: rawProdIds } }] : []),
+          ...(rawSkus.length ? [{ sku: { in: rawSkus } }] : []),
+        ],
+      },
+    });
+
+    const fallbackProduct = matchedProducts[0] || (await prisma.product.findFirst({ where: { is_active: true } }));
+
+    // Compute order valuation and line items
     let subtotal = 0;
     let taxTotal = 0;
     let discountTotal = 0;
 
     const computedItems: any[] = [];
     for (const it of items) {
-      let resolvedProdId = it.product_id;
       const itemAny = it as any;
-      let prod = await prisma.product.findUnique({ where: { id: resolvedProdId } }).catch(() => null);
-      if (!prod) {
-        prod = await prisma.product.findFirst({
-          where: {
-            OR: [
-              ...(itemAny.sku ? [{ sku: itemAny.sku }] : []),
-              ...(resolvedProdId ? [{ sku: resolvedProdId }] : []),
-              ...(itemAny.name ? [{ name: itemAny.name }] : []),
-            ],
-          },
-        });
-      }
-      if (!prod && itemAny.name) {
-        prod = await prisma.product.findFirst({
-          where: { name: { contains: itemAny.name, mode: 'insensitive' } },
-        });
-      }
-      if (!prod) {
-        prod = await prisma.product.findFirst({ where: { is_active: true } });
-      }
-      if (prod) {
-        resolvedProdId = prod.id;
-      }
+      const prod =
+        matchedProducts.find(
+          (p) =>
+            p.id === it.product_id ||
+            p.sku === itemAny.sku ||
+            p.sku === it.product_id ||
+            (itemAny.name && p.name.toLowerCase() === itemAny.name.toLowerCase())
+        ) || fallbackProduct;
+
+      const resolvedProdId = prod ? prod.id : it.product_id;
       const itemSubtotal = it.quantity * it.unit_price;
       const itemDiscount = it.discount || 0;
       const taxable = Math.max(0, itemSubtotal - itemDiscount);
@@ -176,55 +186,144 @@ router.post('/', async (req, res): Promise<void> => {
 
     const grandTotal = subtotal - discountTotal + taxTotal;
 
-    // Create sales order and deduct stock in a transaction
-    const order = await prisma.$transaction(
-      async (tx) => {
-        const createdOrder = await tx.salesOrder.create({
-          data: {
-            order_number: orderNumber,
-            customer_id: customer_id || null,
-            customer_name,
-            customer_phone,
-            customer_address,
-            customer_gstin,
-            godown_id: targetGodownId!,
-            order_date: new Date(order_date),
-            status: 'CONFIRMED',
-            subtotal,
-            tax_total: taxTotal,
-            discount_total: discountTotal,
-            grand_total: grandTotal,
-            notes,
-            created_by: req.user?.id,
-            items: {
-              create: computedItems,
-            },
+    // Create sales order in CONFIRMED status (ready for warehouse dispatch)
+    const order = await prisma.salesOrder.create({
+      data: {
+        order_number: orderNumber,
+        customer_id: customer_id || null,
+        customer_name,
+        customer_phone,
+        customer_address,
+        customer_gstin,
+        godown_id: targetGodownId!,
+        order_date: new Date(order_date),
+        status: 'CONFIRMED',
+        subtotal,
+        tax_total: taxTotal,
+        discount_total: discountTotal,
+        grand_total: grandTotal,
+        notes,
+        created_by: req.user?.id,
+        items: {
+          create: computedItems,
+        },
+      },
+      include: {
+        items: { include: { product: true } },
+        godown: true,
+        customer: true,
+        invoices: true,
+      },
+    });
+
+    res.status(201).json(formatOrder(order));
+  } catch (err: any) {
+    console.error('Create sales order error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to create sales order' });
+  }
+});
+
+// Dispatch / Fulfill Sales Order: validates stock, issues TAX INVOICE, and decrements stock in Ledger
+const handleDispatchOrder = async (req: any, res: any): Promise<void> => {
+  try {
+    const order = await prisma.salesOrder.findUnique({
+      where: { id: req.params.id },
+      include: {
+        items: { include: { product: true } },
+        godown: true,
+        customer: true,
+        invoices: true,
+      },
+    });
+
+    if (!order) {
+      res.status(404).json({ error: 'Sales order not found' });
+      return;
+    }
+
+    if (order.status === 'DELIVERED') {
+      res.status(400).json({ error: 'Sales order has already been dispatched' });
+      return;
+    }
+
+    // Check stock availability in target godown for all line items
+    for (const item of order.items) {
+      const balance = await prisma.stockBalance.findUnique({
+        where: {
+          product_id_godown_id: {
+            product_id: item.product_id,
+            godown_id: order.godown_id,
           },
-          include: {
-            items: { include: { product: true } },
-            godown: true,
+        },
+      });
+
+      const currentQty = balance ? Number(balance.current_quantity) : 0;
+      const requiredQty = Number(item.quantity);
+      if (currentQty < requiredQty) {
+        res.status(400).json({
+          error: `Insufficient stock for ${item.product?.name || 'Item'} (${item.product?.sku || 'SKU'}) in ${order.godown?.name || 'Godown'}. Available: ${currentQty}, Required: ${requiredQty}`,
+        });
+        return;
+      }
+    }
+
+    // Execute atomic dispatch in transaction
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // 1. Update order status to DELIVERED
+        const updatedOrder = await tx.salesOrder.update({
+          where: { id: order.id },
+          data: { status: 'DELIVERED' },
+        });
+
+        // 2. Record stock movements in ledger (with idempotency guard)
+        const existingMovements = await tx.stockMovement.findMany({
+          where: {
+            reference_type: 'SALES_ORDER',
+            reference_id: order.id,
+            movement_type: 'SALES_DELIVERY',
           },
         });
 
-        // Automatically record stock movements (SALES_DELIVERY)
-        for (const item of computedItems) {
-          await LedgerService.recordMovement(
-            {
-              product_id: item.product_id,
-              godown_id: targetGodownId!,
-              movement_type: 'SALES_DELIVERY',
-              quantity: -item.quantity, // deduction
-              unit_cost: item.unit_price,
-              reference_type: 'SALES_ORDER',
-              reference_id: createdOrder.id,
-              notes: `Delivery for order ${orderNumber}`,
-              created_by: req.user?.id,
-            },
-            tx
-          );
+        if (existingMovements.length === 0) {
+          for (const item of order.items) {
+            await LedgerService.recordMovement(
+              {
+                product_id: item.product_id,
+                godown_id: order.godown_id,
+                movement_type: 'SALES_DELIVERY',
+                quantity: -Number(item.quantity),
+                unit_cost: Number(item.unit_price),
+                reference_type: 'SALES_ORDER',
+                reference_id: order.id,
+                notes: `Delivery for order ${order.order_number}`,
+                created_by: req.user?.id,
+              },
+              tx
+            );
+          }
         }
 
-        return createdOrder;
+        // 3. Issue legal Invoice if one does not already exist
+        let invoice = order.invoices?.[0];
+        if (!invoice) {
+          const invCount = await tx.invoice.count();
+          const invoiceNumber = `INV-${new Date().getFullYear()}-${String(invCount + 1).padStart(4, '0')}`;
+          invoice = await tx.invoice.create({
+            data: {
+              invoice_number: invoiceNumber,
+              reference_order_id: order.id,
+              customer_id: order.customer_id,
+              godown_id: order.godown_id,
+              subtotal: order.subtotal,
+              tax_total: order.tax_total,
+              grand_total: order.grand_total,
+              balance_amount: order.grand_total,
+            },
+          });
+        }
+
+        return { order: updatedOrder, invoice };
       },
       {
         maxWait: 15000,
@@ -232,12 +331,20 @@ router.post('/', async (req, res): Promise<void> => {
       }
     );
 
-    res.status(201).json(order);
+    res.json({
+      success: true,
+      message: 'Sales order dispatched and document issued successfully',
+      invoice_id: result.invoice.id,
+      invoice_number: result.invoice.invoice_number,
+    });
   } catch (err: any) {
-    console.error('Create sales order error:', err);
-    res.status(500).json({ error: err?.message || 'Failed to create sales order' });
+    console.error('Dispatch sales order error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to dispatch sales order' });
   }
-});
+};
+
+router.post('/:id/dispatch', handleDispatchOrder);
+router.post('/:id/fulfill', handleDispatchOrder);
 
 router.get('/:id', async (req, res): Promise<void> => {
   try {
@@ -246,6 +353,7 @@ router.get('/:id', async (req, res): Promise<void> => {
       include: {
         customer: true,
         godown: true,
+        invoices: true,
         items: {
           include: {
             product: true,
@@ -259,9 +367,35 @@ router.get('/:id', async (req, res): Promise<void> => {
       return;
     }
 
-    res.json(order);
+    res.json(formatOrder(order));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch order details' });
+  }
+});
+
+router.delete('/:id', async (req, res): Promise<void> => {
+  try {
+    const order = await prisma.salesOrder.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!order) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+
+    if (order.status === 'DELIVERED') {
+      res.status(400).json({ error: 'Cannot delete fulfilled/delivered sales orders' });
+      return;
+    }
+
+    await prisma.salesOrder.delete({
+      where: { id: req.params.id },
+    });
+
+    res.json({ success: true, message: 'Sales order deleted successfully' });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to delete sales order' });
   }
 });
 

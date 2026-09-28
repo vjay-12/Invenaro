@@ -18,13 +18,18 @@ const mapCustomer = (c: any) => ({
 
 router.get('/', async (req, res): Promise<void> => {
   try {
+    const includeCounts = req.query.include_counts === 'true';
     const customers = await prisma.customer.findMany({
       orderBy: { name: 'asc' },
-      include: {
-        _count: {
-          select: { sales_orders: true },
-        },
-      },
+      ...(includeCounts
+        ? {
+            include: {
+              _count: {
+                select: { sales_orders: true },
+              },
+            },
+          }
+        : {}),
     });
     res.json(customers.map(mapCustomer));
   } catch (err) {

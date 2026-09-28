@@ -42,8 +42,10 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
   } = useInventory();
 
   useEffect(() => {
-    refreshData?.();
-  }, [refreshData]);
+    if (products.length === 0 || locations.length === 0) {
+      refreshData?.();
+    }
+  }, [refreshData, products.length, locations.length]);
   const license = useLicense();
   const isMultiGodown = license.hasModule('multi_godown');
   const { user, applyTaxToSalesOrders, updateUserLocal } = useAuth();

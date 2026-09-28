@@ -336,18 +336,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 id: bpo.id,
                 poNumber: bpo.po_number,
                 supplierName: bpo.supplier_name,
-                status: bpo.status === 'completed' ? 'received' : bpo.status || 'pending',
-                targetLocationId: bpo.target_location_id,
-                targetLocationName: bpo.target_location_name || 'Main Fulfillment Center',
-                totalAmount: Number(bpo.total_amount || 0),
+                status: bpo.status === 'completed' || bpo.status === 'RECEIVED' ? 'received' : bpo.status || 'pending',
+                targetLocationId: bpo.target_location_id || bpo.godown_id,
+                targetLocationName: bpo.target_location_name || bpo.godown?.name || 'Main Fulfillment Center',
+                totalAmount: Number(bpo.total_amount ?? bpo.grand_total ?? 0),
                 orderDate: bpo.order_date ? bpo.order_date.split('T')[0] : '',
                 receivedDate: bpo.received_date ? bpo.received_date.split('T')[0] : undefined,
                 notes: bpo.notes || '',
                 items: (bpo.items || []).map((it: any) => ({
                   productId: it.product_id,
-                  sku: it.sku || 'SKU',
-                  name: it.product_name || 'Item',
-                  orderedQty: Number(it.ordered_qty || 0),
+                  sku: it.sku || it.product?.sku || 'SKU',
+                  name: it.product_name || it.product?.name || 'Item',
+                  orderedQty: Number(it.ordered_qty ?? it.quantity ?? 0),
                   receivedQty: Number(it.received_qty || 0),
                   unitCost: Number(it.unit_cost || 0),
                 })),
@@ -365,23 +365,23 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if (backendSOs && Array.isArray(backendSOs)) {
               const mappedSOs: SalesOrder[] = backendSOs.map((bso: any) => ({
                 id: bso.id,
-                soNumber: bso.so_number,
+                soNumber: bso.so_number || bso.order_number,
                 customerName: bso.customer_name,
                 customerGstin: bso.customer_gstin,
-                billingAddress: bso.billing_address,
-                shippingAddress: bso.shipping_address,
+                billingAddress: bso.billing_address || bso.customer_address,
+                shippingAddress: bso.shipping_address || bso.customer_address,
                 state: bso.state,
                 stateCode: bso.state_code,
                 billingState: bso.billing_state,
                 billingStateCode: bso.billing_state_code,
                 shippingState: bso.shipping_state,
                 shippingStateCode: bso.shipping_state_code,
-                invoiceId: bso.invoice_id || undefined,
-                status: bso.status === 'completed' ? 'fulfilled' : bso.status || 'pending',
+                invoiceId: bso.invoice_id || (bso.invoices && bso.invoices[0]?.id) || undefined,
+                status: bso.status === 'completed' || bso.status === 'DELIVERED' ? 'fulfilled' : (bso.status === 'CONFIRMED' ? 'draft' : bso.status || 'pending'),
                 taxEnabled: bso.tax_enabled ?? true,
-                sourceLocationId: bso.source_location_id,
-                sourceLocationName: bso.source_location_name || 'Main Fulfillment Center',
-                totalAmount: Number(bso.total_amount || 0),
+                sourceLocationId: bso.source_location_id || bso.godown_id,
+                sourceLocationName: bso.source_location_name || bso.godown?.name || 'Main Fulfillment Center',
+                totalAmount: Number(bso.total_amount ?? bso.grand_total ?? 0),
                 orderDate: bso.order_date ? bso.order_date.split('T')[0] : '',
                 fulfilledDate: bso.fulfilled_date ? bso.fulfilled_date.split('T')[0] : undefined,
                 createdAt: bso.created_at || bso.order_date,
@@ -390,9 +390,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 notes: bso.notes || '',
                 items: (bso.items || []).map((it: any) => ({
                   productId: it.product_id,
-                  sku: it.sku || 'SKU',
-                  name: it.product_name || 'Item',
-                  orderedQty: Number(it.ordered_qty || 0),
+                  sku: it.sku || it.product?.sku || 'SKU',
+                  name: it.product_name || it.product?.name || 'Item',
+                  orderedQty: Number(it.ordered_qty ?? it.quantity ?? 0),
                   fulfilledQty: Number(it.fulfilled_qty || 0),
                   unitPrice: Number(it.unit_price || 0),
                 })),
@@ -1069,7 +1069,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     try {
       const locUuid = resolveLocationUuid(data.sourceLocationId);
-      await api.createSalesOrder({
+      const created = await api.createSalesOrder({
         customer_name: data.customerName,
         customer_gstin: data.customerGstin,
         billing_address: data.billingAddress,
@@ -1096,6 +1096,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           };
         }),
       });
+      if (created && created.id) {
+        const persistedSO: SalesOrder = {
+          ...newSO,
+          id: created.id,
+          soNumber: created.so_number || created.order_number || newSO.soNumber,
+          sourceLocationId: created.source_location_id || created.godown_id || newSO.sourceLocationId,
+          sourceLocationName: created.source_location_name || newSO.sourceLocationName,
+          totalAmount: Number(created.total_amount ?? created.grand_total ?? newSO.totalAmount),
+          status: 'draft',
+        };
+        setSalesOrders(prev => [persistedSO, ...prev.filter(s => s.id !== newSO.id)]);
+      }
       const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId;
       await syncBackend(activeTid);
     } catch (err) {
