@@ -50,13 +50,14 @@ export const productSchema = z.object({
   name: z.string().min(1, 'Product name is required').max(200),
   description: z.string().optional().nullable(),
   category_id: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
   unit: z.string().min(1, 'Unit is required').default('PCS'),
   sale_price: z.number().min(0, 'Sale price must be non-negative'),
   purchase_price: z.number().min(0, 'Purchase price must be non-negative').default(0),
   hsn_code: z.string().optional().nullable(),
   tax_rate: z.number().min(0).max(100).default(0),
   min_stock_level: z.number().min(0).default(0),
-  initial_stock: z.number().min(0).optional().default(0),
+  initial_stock: z.number().min(0, 'Opening stock must be 0 or greater').optional().default(0),
   godown_id: z.string().optional(),
 });
 

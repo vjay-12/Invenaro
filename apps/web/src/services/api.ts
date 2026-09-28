@@ -676,6 +676,14 @@ export const api = {
   clearAllProducts: async () =>
     fetchWithFallback<any>('/products/clear-all', { method: 'DELETE' }),
 
+  // Categories & Units of Measure (UOM)
+  getCategories: async () => fetchWithFallback<any[]>('/products/categories'),
+  createCategory: async (data: { name: string; description?: string }) =>
+    fetchWithFallback<any>('/products/categories', { method: 'POST', body: JSON.stringify(data) }),
+  getUoms: async () => fetchWithFallback<string[]>('/products/uoms'),
+  createUom: async (name: string) =>
+    fetchWithFallback<any>('/products/uoms', { method: 'POST', body: JSON.stringify({ name }) }),
+
   // Danger Zone Multi-Step Verification & Dual Authorization
   sendDangerZoneOtp: async (action: string, email?: string) =>
     fetchWithFallback<any>('/danger-zone/send-otp', {

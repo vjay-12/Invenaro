@@ -37,8 +37,12 @@ interface InventoryContextType {
   setSelectedLocationId: (locId: string) => void;
   formatCurrency: (amount: number, fromCurrency?: CurrencyCode) => string;
   
-  // Actions
-  addProduct: (product: Omit<Product, 'id' | 'currentStock' | 'locationStock' | 'createdAt' | 'isActive'>) => void;
+  addProduct: (
+    product: Omit<Product, 'id' | 'currentStock' | 'locationStock' | 'createdAt' | 'isActive'> & {
+      initialStock?: number;
+      godownId?: string;
+    }
+  ) => Promise<void>;
   bulkAddProducts: (
     products: (Omit<Product, 'id' | 'currentStock' | 'locationStock' | 'createdAt' | 'isActive'> & { initialStock?: number })[]
   ) => Promise<number>;
@@ -708,17 +712,50 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // Add Product
-  const addProduct = async (data: Omit<Product, 'id' | 'currentStock' | 'locationStock' | 'createdAt' | 'isActive'>) => {
+  const addProduct = async (
+    data: Omit<Product, 'id' | 'currentStock' | 'locationStock' | 'createdAt' | 'isActive'> & {
+      initialStock?: number;
+      godownId?: string;
+    }
+  ) => {
     const newId = `prod-${Date.now()}`;
+    const initialQty = typeof data.initialStock === 'number' && data.initialStock > 0 ? data.initialStock : 0;
+    const defaultLoc = locations.find(l => l.id === selectedLocationId) || locations[0];
+    const targetLocId = data.godownId || (selectedLocationId !== 'all' ? selectedLocationId : defaultLoc?.id) || 'loc-1';
+    const targetLocName = locations.find(l => l.id === targetLocId)?.name || 'Main Central Godown';
+
     const newProduct: Product = {
       ...data,
       id: newId,
-      currentStock: 0,
-      locationStock: {},
+      currentStock: initialQty,
+      locationStock: initialQty > 0 && targetLocId ? { [targetLocId]: initialQty } : {},
       isActive: true,
       createdAt: new Date().toISOString(),
     };
     setProducts(prev => [newProduct, ...prev]);
+
+    if (initialQty > 0) {
+      setLedger(prev => [
+        {
+          id: `mov-init-${newId}`,
+          timestamp: new Date().toISOString(),
+          productId: newId,
+          sku: data.sku,
+          productName: data.name,
+          movementType: 'IN',
+          quantity: initialQty,
+          locationId: targetLocId,
+          locationName: targetLocName,
+          referenceType: 'INITIAL',
+          referenceId: 'OPENING-BALANCE',
+          reasonCode: 'Opening Balance',
+          performedBy: user?.fullName || user?.email || 'Administrator',
+          unitCost: data.costPrice,
+          runningBalance: initialQty,
+        },
+        ...prev,
+      ]);
+    }
 
     try {
       await api.createProduct({
@@ -734,13 +771,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         gst_rate: data.gstRate !== undefined ? data.gstRate : 18.0,
         variant_attributes: data.variantAttributes || {},
         custom_fields: data.customFields || {},
+        initial_stock: initialQty,
+        godown_id: targetLocId !== 'all' ? targetLocId : undefined,
       });
       const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId;
       await syncBackend(activeTid);
     } catch (err) {
-      // Roll back the optimistic product — it was never saved to the DB.
-      // Re-throw so the calling UI can show an error toast/message to the user.
+      // Roll back the optimistic product and movement
       setProducts(prev => prev.filter(p => p.id !== newId));
+      setLedger(prev => prev.filter(m => m.id !== `mov-init-${newId}`));
       throw err;
     }
   };

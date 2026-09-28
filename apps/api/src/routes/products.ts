@@ -114,16 +114,27 @@ router.post('/bulk-import', async (req, res): Promise<void> => {
       if (categoryCache.has(catKey)) {
         categoryId = categoryCache.get(catKey)!;
       } else {
-        const newCat = await prisma.productCategory.create({
-          data: { name: catName },
+        const existingCat = await prisma.productCategory.findFirst({
+          where: { name: { equals: catName, mode: 'insensitive' } },
         });
-        categoryCache.set(catKey, newCat.id);
-        categoryId = newCat.id;
+        if (existingCat) {
+          categoryCache.set(catKey, existingCat.id);
+          categoryId = existingCat.id;
+        } else {
+          const newCat = await prisma.productCategory.create({
+            data: { name: catName },
+          });
+          categoryCache.set(catKey, newCat.id);
+          categoryId = newCat.id;
+        }
       }
 
       const salePrice = Number(item.sell_price || item.sale_price || item.price || 0);
       const purchasePrice = Number(item.cost_price || item.purchase_price || item.cost || 0);
       const unit = String(item.unit_of_measure || item.unit || 'pcs').trim();
+      if (unit) {
+        customUomsCache.add(unit.toLowerCase().trim());
+      }
       const taxRate = Number(item.tax_rate ?? item.gst_rate ?? 0);
       const hsnCode = item.hsn_code || item.tax_code || null;
       const reorderPoint = Number(item.reorder_point || item.min_stock_level || 10);
@@ -220,16 +231,141 @@ router.delete('/clear-all', async (req, res): Promise<void> => {
   }
 });
 
+// Standard default UOM options
+const DEFAULT_UOMS = [
+  'pcs',
+  'box',
+  'kg',
+  'g',
+  'litre',
+  'ml',
+  'meters',
+  'pkt',
+  'carton',
+  'dozen',
+  'set',
+  'roll',
+  'bundle',
+];
+
+const customUomsCache = new Set<string>();
+
+router.get('/categories', async (req, res): Promise<void> => {
+  try {
+    const categories = await prisma.productCategory.findMany({
+      orderBy: { name: 'asc' },
+    });
+    res.json(categories);
+  } catch (err) {
+    console.error('Fetch categories error:', err);
+    res.status(500).json({ error: 'Failed to fetch categories' });
+  }
+});
+
+router.post('/categories', async (req, res): Promise<void> => {
+  try {
+    const rawName = (req.body.name || req.body.category || '').toString().trim();
+    if (!rawName) {
+      res.status(400).json({ error: 'Category name is required' });
+      return;
+    }
+
+    // Prevent duplicates caused by capitalization/whitespace
+    const existing = await prisma.productCategory.findFirst({
+      where: {
+        name: {
+          equals: rawName,
+          mode: 'insensitive',
+        },
+      },
+    });
+
+    if (existing) {
+      res.status(200).json(existing);
+      return;
+    }
+
+    const newCategory = await prisma.productCategory.create({
+      data: {
+        name: rawName,
+        description: req.body.description || null,
+      },
+    });
+
+    res.status(201).json(newCategory);
+  } catch (err: any) {
+    console.error('Create category error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to create category' });
+  }
+});
+
+router.get('/uoms', async (req, res): Promise<void> => {
+  try {
+    const dbUnits = await prisma.product.findMany({
+      select: { unit: true },
+      distinct: ['unit'],
+    });
+
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    const addUnit = (unitStr: string | null | undefined) => {
+      if (!unitStr) return;
+      const clean = unitStr.trim();
+      const lower = clean.toLowerCase();
+      if (!seen.has(lower) && clean.length > 0) {
+        seen.add(lower);
+        result.push(clean);
+      }
+    };
+
+    DEFAULT_UOMS.forEach(addUnit);
+    customUomsCache.forEach(addUnit);
+    dbUnits.forEach((p) => addUnit(p.unit));
+
+    res.json(result);
+  } catch (err) {
+    console.error('Fetch UOMs error:', err);
+    res.status(500).json({ error: 'Failed to fetch units of measure' });
+  }
+});
+
+router.post('/uoms', async (req, res): Promise<void> => {
+  try {
+    const raw = (req.body.uom || req.body.unit || req.body.name || req.body.code || '').toString().trim();
+    if (!raw) {
+      res.status(400).json({ error: 'Unit of measure name is required' });
+      return;
+    }
+    const clean = raw.toLowerCase();
+    customUomsCache.add(clean);
+    res.status(201).json({ success: true, unit: clean, uom: clean });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to create unit' });
+  }
+});
+
 router.post('/', async (req, res): Promise<void> => {
   try {
     // Normalize aliases from frontend
+    const rawUnit = (req.body.unit || req.body.unit_of_measure || 'PCS').toString().trim();
+    const rawInitialStock =
+      req.body.initial_stock !== undefined
+        ? req.body.initial_stock
+        : req.body.initialStock !== undefined
+        ? req.body.initialStock
+        : req.body.available_stock !== undefined
+        ? req.body.available_stock
+        : req.body.opening_stock;
+
     const normalizedBody = {
       ...req.body,
       sale_price: typeof req.body.sale_price === 'number' ? req.body.sale_price : Number(req.body.sell_price || 0),
       purchase_price: typeof req.body.purchase_price === 'number' ? req.body.purchase_price : Number(req.body.cost_price || 0),
-      unit: req.body.unit || req.body.unit_of_measure || 'PCS',
+      unit: rawUnit || 'PCS',
       min_stock_level: typeof req.body.min_stock_level === 'number' ? req.body.min_stock_level : Number(req.body.reorder_point || 0),
       tax_rate: typeof req.body.tax_rate === 'number' ? req.body.tax_rate : Number(req.body.gst_rate || 0),
+      initial_stock: rawInitialStock !== undefined && rawInitialStock !== '' ? Number(rawInitialStock) : 0,
     };
 
     const parse = productSchema.safeParse(normalizedBody);
@@ -243,6 +379,7 @@ router.post('/', async (req, res): Promise<void> => {
       name,
       description,
       category_id,
+      category,
       unit,
       sale_price,
       purchase_price,
@@ -253,44 +390,116 @@ router.post('/', async (req, res): Promise<void> => {
       godown_id,
     } = parse.data;
 
+    // Resolve category (by ID or by name case-insensitively)
+    let targetCategoryId = category_id || null;
+    const categoryName = (category || req.body.category_name)?.toString().trim();
+    if (!targetCategoryId && categoryName) {
+      const existingCat = await prisma.productCategory.findFirst({
+        where: {
+          name: {
+            equals: categoryName,
+            mode: 'insensitive',
+          },
+        },
+      });
+      if (existingCat) {
+        targetCategoryId = existingCat.id;
+      } else {
+        const createdCat = await prisma.productCategory.create({
+          data: { name: categoryName },
+        });
+        targetCategoryId = createdCat.id;
+      }
+    }
+
+    // Cache unit
+    if (unit) {
+      customUomsCache.add(unit.toLowerCase().trim());
+    }
+
     // Determine godown for initial stock
     let targetGodownId = godown_id;
     if (!targetGodownId) {
-      const defaultGodown = await prisma.godown.findFirst({ where: { is_default: true } });
-      targetGodownId = defaultGodown?.id;
+      if (req.user?.assigned_godown_id) {
+        targetGodownId = req.user.assigned_godown_id;
+      } else {
+        const defaultGodown =
+          (await prisma.godown.findFirst({ where: { is_default: true } })) ||
+          (await prisma.godown.findFirst());
+        targetGodownId = defaultGodown?.id;
+      }
     }
 
     const product = await prisma.product.create({
       data: {
-        sku,
-        name,
+        sku: sku.toUpperCase().trim(),
+        name: name.trim(),
         description,
-        category_id,
-        unit,
+        category_id: targetCategoryId,
+        unit: unit.trim(),
         sale_price,
         purchase_price,
         hsn_code,
         tax_rate,
         min_stock_level,
       },
+      include: {
+        category: true,
+      },
     });
 
-    // If initial stock provided, record it in ledger
-    if (initial_stock && initial_stock > 0 && targetGodownId) {
-      await LedgerService.recordMovement({
-        product_id: product.id,
-        godown_id: targetGodownId,
-        movement_type: 'ADJUSTMENT_ADD',
-        quantity: initial_stock,
-        unit_cost: purchase_price,
-        reference_type: 'OPENING_STOCK',
-        reference_id: product.id,
-        notes: 'Initial stock recorded on product creation',
-        created_by: req.user?.id,
-      });
+    // If initial stock provided, record opening movement in ledger; otherwise ensure 0-balance exists
+    if (targetGodownId) {
+      if (initial_stock && initial_stock > 0) {
+        await LedgerService.recordMovement({
+          product_id: product.id,
+          godown_id: targetGodownId,
+          movement_type: 'ADJUSTMENT_ADD',
+          quantity: initial_stock,
+          unit_cost: purchase_price,
+          reference_type: 'OPENING_STOCK',
+          reference_id: product.id,
+          notes: 'Initial opening stock recorded on SKU creation',
+          created_by: req.user?.id,
+        });
+      } else {
+        await prisma.stockBalance.upsert({
+          where: {
+            product_id_godown_id: {
+              product_id: product.id,
+              godown_id: targetGodownId,
+            },
+          },
+          update: {},
+          create: {
+            product_id: product.id,
+            godown_id: targetGodownId,
+            current_quantity: 0,
+            avg_cost: purchase_price,
+          },
+        });
+      }
     }
 
-    res.status(201).json(product);
+    // Return product with populated category name & stock
+    const catName = product.category?.name || 'General';
+    res.status(201).json({
+      ...product,
+      category: catName,
+      category_name: catName,
+      unit_of_measure: product.unit,
+      cost_price: Number(product.purchase_price),
+      purchase_price: Number(product.purchase_price),
+      sell_price: Number(product.sale_price),
+      sale_price: Number(product.sale_price),
+      tax_rate: Number(product.tax_rate),
+      gst_rate: Number(product.tax_rate),
+      reorder_point: Number(product.min_stock_level),
+      min_stock_level: Number(product.min_stock_level),
+      total_stock: initial_stock || 0,
+      current_stock: initial_stock || 0,
+      location_stock: targetGodownId ? { [targetGodownId]: initial_stock || 0 } : {},
+    });
   } catch (err: any) {
     console.error('Create product error:', err);
     if (err.code === 'P2002') {

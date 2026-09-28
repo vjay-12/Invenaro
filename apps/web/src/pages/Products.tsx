@@ -33,6 +33,7 @@ import {
 } from '../components/icons';
 import { useInventory } from '../context/InventoryContext';
 import { useLicense } from '../context/LicenseContext';
+import { api } from '../services/api';
 import * as XLSX from 'xlsx';
 import { Product, AdjustmentReasonCode, CurrencyCode } from '../types/inventory';
 import { Modal } from '../components/common/Modal';
@@ -210,8 +211,9 @@ export const Products: React.FC = () => {
   // New Product Form State
   const [newSku, setNewSku] = useState('');
   const [newName, setNewName] = useState('');
-  const [newCategory, setNewCategory] = useState('Electronics');
+  const [newCategory, setNewCategory] = useState('');
   const [newUom, setNewUom] = useState('pcs');
+  const [newOpeningStock, setNewOpeningStock] = useState('0');
   const [newCostPrice, setNewCostPrice] = useState('25.00');
   const [newSellPrice, setNewSellPrice] = useState('60.00');
   const [newBarcode, setNewBarcode] = useState('');
@@ -223,6 +225,25 @@ export const Products: React.FC = () => {
   const [newVariantKey, setNewVariantKey] = useState('Color');
   const [newVariantValue, setNewVariantValue] = useState('');
   const [newCustomFieldsData, setNewCustomFieldsData] = useState<Record<string, any>>({});
+
+  // Dynamic Category & UOM Master State
+  const [categoriesList, setCategoriesList] = useState<string[]>([]);
+  const [uomsList, setUomsList] = useState<string[]>([
+    'pcs',
+    'box',
+    'kg',
+    'g',
+    'litre',
+    'ml',
+    'meters',
+    'pkt',
+    'carton',
+    'dozen',
+  ]);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState('');
+  const [isAddingUom, setIsAddingUom] = useState(false);
+  const [customUomInput, setCustomUomInput] = useState('');
 
   // Edit Product Form State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -281,11 +302,148 @@ export const Products: React.FC = () => {
     }
   }, [taxConfig]);
 
+  // Load existing categories and UOMs from database and merge with catalog
+  useEffect(() => {
+    let isMounted = true;
+    const fetchMetadata = async () => {
+      try {
+        const [catsRes, uomsRes] = await Promise.allSettled([
+          api.getCategories(),
+          api.getUoms(),
+        ]);
+
+        if (!isMounted) return;
+
+        const dbCats =
+          catsRes.status === 'fulfilled' && Array.isArray(catsRes.value)
+            ? catsRes.value.map((c: any) => c.name || c).filter(Boolean)
+            : [];
+        const dbUoms =
+          uomsRes.status === 'fulfilled' && Array.isArray(uomsRes.value)
+            ? uomsRes.value.filter(Boolean)
+            : [];
+
+        const prodCats = products.map((p) => p.category).filter(Boolean);
+        const combinedCats = Array.from(
+          new Set([...dbCats, ...prodCats, 'General'])
+        ).filter(Boolean);
+        setCategoriesList(combinedCats);
+
+        const defaultUoms = [
+          'pcs',
+          'box',
+          'kg',
+          'g',
+          'litre',
+          'ml',
+          'meters',
+          'pkt',
+          'carton',
+          'dozen',
+        ];
+        const prodUoms = products.map((p) => p.unitOfMeasure).filter(Boolean);
+        const combinedUoms = Array.from(
+          new Set([...defaultUoms, ...dbUoms, ...prodUoms])
+        ).filter(Boolean);
+        setUomsList(combinedUoms);
+      } catch (err) {
+        console.error('Failed to load categories/uoms:', err);
+      }
+    };
+    fetchMetadata();
+    return () => {
+      isMounted = false;
+    };
+  }, [products]);
+
+  const categoryOptions: DropdownOption[] = useMemo(() => {
+    const list = categoriesList.length > 0 ? categoriesList : ['General'];
+    const sorted = [...new Set(list)].sort((a, b) => a.localeCompare(b));
+    return sorted.map((cat) => ({
+      value: cat,
+      label: cat,
+    }));
+  }, [categoriesList]);
+
+  const uomOptions: DropdownOption[] = useMemo(() => {
+    const labelMap: Record<string, string> = {
+      pcs: 'Pieces (pcs)',
+      box: 'Box (box)',
+      kg: 'Kilogram (kg)',
+      g: 'Gram (g)',
+      litre: 'Litre (litre)',
+      ml: 'Millilitre (ml)',
+      meters: 'Meters (m)',
+      pkt: 'Packet (pkt)',
+      carton: 'Carton (carton)',
+      dozen: 'Dozen (dozen)',
+      set: 'Set (set)',
+      roll: 'Roll (roll)',
+      bundle: 'Bundle (bundle)',
+    };
+
+    return uomsList.map((u) => ({
+      value: u,
+      label: labelMap[u.toLowerCase()] || `${u.charAt(0).toUpperCase() + u.slice(1)} (${u})`,
+    }));
+  }, [uomsList]);
+
+  const handleAddNewCategory = async () => {
+    const clean = customCategoryInput.trim();
+    if (!clean) return;
+
+    // Check case-insensitive duplicate in current list
+    const existing = categoriesList.find((c) => c.toLowerCase() === clean.toLowerCase());
+    if (existing) {
+      setNewCategory(existing);
+      setIsAddingCategory(false);
+      setCustomCategoryInput('');
+      return;
+    }
+
+    try {
+      await api.createCategory({ name: clean });
+    } catch (e) {
+      console.warn('Backend category save:', e);
+    }
+
+    setCategoriesList((prev) => [clean, ...prev.filter((c) => c.toLowerCase() !== clean.toLowerCase())]);
+    setNewCategory(clean);
+    setIsAddingCategory(false);
+    setCustomCategoryInput('');
+  };
+
+  const handleAddNewUom = async () => {
+    const clean = customUomInput.trim().toLowerCase();
+    if (!clean) return;
+
+    const existing = uomsList.find((u) => u.toLowerCase() === clean);
+    if (existing) {
+      setNewUom(existing);
+      setIsAddingUom(false);
+      setCustomUomInput('');
+      return;
+    }
+
+    try {
+      await api.createUom(clean);
+    } catch (e) {
+      console.warn('Backend uom save:', e);
+    }
+
+    setUomsList((prev) => [...prev, clean]);
+    setNewUom(clean);
+    setIsAddingUom(false);
+    setCustomUomInput('');
+  };
+
   const openAddModal = () => {
     setNewSku('');
     setNewName('');
-    setNewCategory('Electronics');
-    setNewUom('pcs');
+    const defaultCat = categoriesList[0] || 'General';
+    setNewCategory(defaultCat);
+    setNewUom(uomsList[0] || 'pcs');
+    setNewOpeningStock('0');
     setNewCostPrice('25.00');
     setNewSellPrice('60.00');
     setNewBarcode('');
@@ -296,6 +454,10 @@ export const Products: React.FC = () => {
     setNewVariantKey('Color');
     setNewVariantValue('');
     setNewCustomFieldsData({});
+    setIsAddingCategory(false);
+    setCustomCategoryInput('');
+    setIsAddingUom(false);
+    setCustomUomInput('');
     setAddModalError(null);
     setIsAddModalOpen(true);
   };
@@ -308,8 +470,8 @@ export const Products: React.FC = () => {
 
   // Categories list & counts
   const categories = useMemo(() => {
-    return ['all', ...Array.from(new Set(products.map((p) => p.category)))];
-  }, [products]);
+    return ['all', ...Array.from(new Set([...products.map((p) => p.category), ...categoriesList]))];
+  }, [products, categoriesList]);
 
   const categoryCounts = useMemo(() => {
     return products.reduce((acc, p) => {
@@ -440,11 +602,16 @@ export const Products: React.FC = () => {
   };
 
   // Create Product Submit
-  const handleCreateProduct = (e: React.FormEvent) => {
+  const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddModalError(null);
     if (!newSku.trim() || !newName.trim()) {
       setAddModalError('SKU and Product Title are required.');
+      return;
+    }
+    const openingStockNum = parseFloat(newOpeningStock);
+    if (isNaN(openingStockNum) || openingStockNum < 0) {
+      setAddModalError('Opening / Available Stock must be 0 or greater.');
       return;
     }
     const rateNum = newGstRate !== '' && !isNaN(Number(newGstRate)) ? Number(newGstRate) : 0;
@@ -458,34 +625,41 @@ export const Products: React.FC = () => {
       variantAttrs[newVariantKey] = newVariantValue;
     }
 
-    addProduct({
-      sku: newSku.toUpperCase().trim(),
-      name: newName.trim(),
-      category: newCategory,
-      unitOfMeasure: newUom,
-      costPrice: parseFloat(newCostPrice) || 0,
-      sellPrice: parseFloat(newSellPrice) || 0,
-      barcode: newBarcode.trim() || `890${Math.floor(100000000 + Math.random() * 900000000)}`,
-      reorderPoint: parseFloat(newReorderPoint) || 10,
-      maxStock: parseFloat(newMaxStock) || undefined,
-      hsnCode: newHsnCode.trim(),
-      gstRate: rateNum,
-      variantAttributes: variantAttrs,
-      customFields: newCustomFieldsData,
-    });
+    try {
+      await addProduct({
+        sku: newSku.toUpperCase().trim(),
+        name: newName.trim(),
+        category: (newCategory || 'General').trim(),
+        unitOfMeasure: (newUom || 'pcs').trim(),
+        initialStock: openingStockNum,
+        godownId: selectedLocationId !== 'all' ? selectedLocationId : undefined,
+        costPrice: parseFloat(newCostPrice) || 0,
+        sellPrice: parseFloat(newSellPrice) || 0,
+        barcode: newBarcode.trim() || `890${Math.floor(100000000 + Math.random() * 900000000)}`,
+        reorderPoint: parseFloat(newReorderPoint) || 10,
+        maxStock: parseFloat(newMaxStock) || undefined,
+        hsnCode: newHsnCode.trim(),
+        gstRate: rateNum,
+        variantAttributes: variantAttrs,
+        customFields: newCustomFieldsData,
+      });
 
-    setIsAddModalOpen(false);
-    // Reset
-    setNewSku('');
-    setNewName('');
-    setNewBarcode('');
-    setNewReorderPoint('15');
-    setNewMaxStock('100');
-    setNewHsnCode(taxConfig.defaultClassificationCode || '8471');
-    setNewGstRate(String(taxConfig.standardRate ?? 18));
-    setNewVariantValue('');
-    setNewCustomFieldsData({});
-    setAddModalError(null);
+      setIsAddModalOpen(false);
+      // Reset
+      setNewSku('');
+      setNewName('');
+      setNewOpeningStock('0');
+      setNewBarcode('');
+      setNewReorderPoint('15');
+      setNewMaxStock('100');
+      setNewHsnCode(taxConfig.defaultClassificationCode || '8471');
+      setNewGstRate(String(taxConfig.standardRate ?? 18));
+      setNewVariantValue('');
+      setNewCustomFieldsData({});
+      setAddModalError(null);
+    } catch (err: any) {
+      setAddModalError(err.message || 'Failed to create product SKU.');
+    }
   };
 
   const handleOpenEditModal = (p: Product) => {
@@ -1682,26 +1856,129 @@ export const Products: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Category
-              </label>
-              <input
-                type="text"
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs focus:border-indigo-500 focus:outline-none"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Category *
+                </label>
+                {!isAddingCategory ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingCategory(true);
+                      setCustomCategoryInput('');
+                    }}
+                    className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                  >
+                    + Add New Category
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingCategory(false)}
+                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+              {isAddingCategory ? (
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Enter category name..."
+                    value={customCategoryInput}
+                    onChange={(e) => setCustomCategoryInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddNewCategory();
+                      } else if (e.key === 'Escape') {
+                        setIsAddingCategory(false);
+                      }
+                    }}
+                    className="flex-1 rounded-xl border border-indigo-400 dark:border-indigo-500 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddNewCategory}
+                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold"
+                  >
+                    Add
+                  </button>
+                </div>
+              ) : (
+                <SimpleSelectDropdown
+                  options={categoryOptions}
+                  value={newCategory}
+                  onChange={setNewCategory}
+                  placeholder="Select Category"
+                />
+              )}
             </div>
+
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Unit of Measure (UOM)
-              </label>
-              <SimpleSelectDropdown
-                options={UOM_OPTIONS}
-                value={newUom}
-                onChange={setNewUom}
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Unit of Measure (UOM) *
+                </label>
+                {!isAddingUom ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingUom(true);
+                      setCustomUomInput('');
+                    }}
+                    className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                  >
+                    + Add New UOM
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingUom(false)}
+                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+              {isAddingUom ? (
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="e.g. pkt, carton, roll..."
+                    value={customUomInput}
+                    onChange={(e) => setCustomUomInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddNewUom();
+                      } else if (e.key === 'Escape') {
+                        setIsAddingUom(false);
+                      }
+                    }}
+                    className="flex-1 rounded-xl border border-indigo-400 dark:border-indigo-500 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddNewUom}
+                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold"
+                  >
+                    Add
+                  </button>
+                </div>
+              ) : (
+                <SimpleSelectDropdown
+                  options={uomOptions}
+                  value={newUom}
+                  onChange={setNewUom}
+                  placeholder="Select UOM"
+                />
+              )}
             </div>
+
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Barcode Value
@@ -1716,7 +1993,7 @@ export const Products: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Cost Price ({currency})
@@ -1724,6 +2001,7 @@ export const Products: React.FC = () => {
               <input
                 type="number"
                 step="0.01"
+                min="0"
                 value={newCostPrice}
                 onChange={(e) => setNewCostPrice(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
@@ -1736,9 +2014,24 @@ export const Products: React.FC = () => {
               <input
                 type="number"
                 step="0.01"
+                min="0"
                 value={newSellPrice}
                 onChange={(e) => setNewSellPrice(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Opening / Available Stock
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={newOpeningStock}
+                onChange={(e) => setNewOpeningStock(e.target.value)}
+                placeholder="0"
+                className="w-full rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/30 dark:bg-indigo-950/20 px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
               />
             </div>
             <div>
@@ -1747,6 +2040,8 @@ export const Products: React.FC = () => {
               </label>
               <input
                 type="number"
+                step="any"
+                min="0"
                 value={newReorderPoint}
                 onChange={(e) => setNewReorderPoint(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
@@ -1758,6 +2053,8 @@ export const Products: React.FC = () => {
               </label>
               <input
                 type="number"
+                step="any"
+                min="0"
                 value={newMaxStock}
                 onChange={(e) => setNewMaxStock(e.target.value)}
                 placeholder="e.g. 100"
@@ -1914,11 +2211,11 @@ export const Products: React.FC = () => {
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Category
               </label>
-              <input
-                type="text"
+              <SimpleSelectDropdown
+                options={categoryOptions}
                 value={editCategory}
-                onChange={(e) => setEditCategory(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs focus:border-indigo-500 focus:outline-none"
+                onChange={setEditCategory}
+                placeholder="Select Category"
               />
             </div>
             <div>
@@ -1926,9 +2223,10 @@ export const Products: React.FC = () => {
                 Unit of Measure (UOM)
               </label>
               <SimpleSelectDropdown
-                options={UOM_OPTIONS}
+                options={uomOptions}
                 value={editUom}
                 onChange={setEditUom}
+                placeholder="Select UOM"
               />
             </div>
             <div>
