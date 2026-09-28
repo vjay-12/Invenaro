@@ -99,8 +99,15 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
     return { code: '33', name: 'Tamil Nadu' };
   };
 
-  // Customers state
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  // Customers state - initialize from cache for instant 0ms rendering
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const cached = localStorage.getItem('invenza_cached_customers');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
@@ -152,27 +159,29 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
       try {
         const data = await api.getCustomers();
         if (Array.isArray(data)) {
-          setCustomers(
-            data
-              .filter((c: any) => c.is_active !== false)
-              .map((c: any) => ({
-                id: c.id,
-                tenantId: c.tenant_id,
-                legalName: c.legal_name || c.name || '',
-                email: c.email,
-                phone: c.phone,
-                gstin: c.gstin,
-                billingAddress: c.billing_address,
-                billingState: c.billing_state || c.state,
-                billingStateCode: c.billing_state_code || c.state_code,
-                shippingAddress: c.shipping_address,
-                shippingState: c.shipping_state,
-                shippingStateCode: c.shipping_state_code,
-                state: c.state,
-                stateCode: c.state_code,
-                isActive: c.is_active !== false,
-              }))
-          );
+          const mapped = data
+            .filter((c: any) => c.is_active !== false)
+            .map((c: any) => ({
+              id: c.id,
+              tenantId: c.tenant_id,
+              legalName: c.legal_name || c.name || '',
+              email: c.email,
+              phone: c.phone,
+              gstin: c.gstin,
+              billingAddress: c.billing_address,
+              billingState: c.billing_state || c.state,
+              billingStateCode: c.billing_state_code || c.state_code,
+              shippingAddress: c.shipping_address,
+              shippingState: c.shipping_state,
+              shippingStateCode: c.shipping_state_code,
+              state: c.state,
+              stateCode: c.state_code,
+              isActive: c.is_active !== false,
+            }));
+          setCustomers(mapped);
+          try {
+            localStorage.setItem('invenza_cached_customers', JSON.stringify(mapped));
+          } catch {}
         }
       } catch (err) {
         console.error('Failed to load customers:', err);

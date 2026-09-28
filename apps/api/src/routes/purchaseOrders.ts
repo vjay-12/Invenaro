@@ -213,31 +213,37 @@ router.post('/:id/receive', async (req, res): Promise<void> => {
       return;
     }
 
-    await prisma.$transaction(async (tx) => {
-      // 1. Mark PO received
-      await tx.purchaseOrder.update({
-        where: { id: po.id },
-        data: { status: 'RECEIVED' },
-      });
+    await prisma.$transaction(
+      async (tx) => {
+        // 1. Mark PO received
+        await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: { status: 'RECEIVED' },
+        });
 
-      // 2. Record stock movements in ledger
-      for (const item of po.items) {
-        await LedgerService.recordMovement(
-          {
-            product_id: item.product_id,
-            godown_id: po.godown_id,
-            movement_type: 'PURCHASE_RECEIPT',
-            quantity: Number(item.quantity),
-            unit_cost: Number(item.unit_cost),
-            reference_type: 'PURCHASE_ORDER',
-            reference_id: po.id,
-            notes: `Goods receipt for PO ${po.po_number}`,
-            created_by: req.user?.id,
-          },
-          tx
-        );
+        // 2. Record stock movements in ledger
+        for (const item of po.items) {
+          await LedgerService.recordMovement(
+            {
+              product_id: item.product_id,
+              godown_id: po.godown_id,
+              movement_type: 'PURCHASE_RECEIPT',
+              quantity: Number(item.quantity),
+              unit_cost: Number(item.unit_cost),
+              reference_type: 'PURCHASE_ORDER',
+              reference_id: po.id,
+              notes: `Goods receipt for PO ${po.po_number}`,
+              created_by: req.user?.id,
+            },
+            tx
+          );
+        }
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
       }
-    });
+    );
 
     res.json({ success: true, message: 'Stock received and ledger recorded successfully' });
   } catch (err) {

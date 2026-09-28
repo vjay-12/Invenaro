@@ -279,183 +279,187 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.warn('Backend movements sync fallback:', movErr);
       }
 
-      // 3. Products from PostgreSQL
-      try {
-        const backendProds = await api.getProducts();
-        if (backendProds && Array.isArray(backendProds)) {
-          const mapped: Product[] = backendProds.map((bp: any) => {
-            const locStock = bp.location_stock || {};
-            const { currentStock, locationStock } = computeStock(
-              bp.id,
-              bp.sku,
-              dbMovements,
-              Number(bp.current_stock || 0),
-              locStock,
-              activeDefaultLocId
-            );
+      // 3-7. Concurrently sync Products, POs, SOs, Transfers, Adjustments from PostgreSQL
+      await Promise.allSettled([
+        (async () => {
+          try {
+            const backendProds = await api.getProducts();
+            if (backendProds && Array.isArray(backendProds)) {
+              const mapped: Product[] = backendProds.map((bp: any) => {
+                const locStock = bp.location_stock || {};
+                const { currentStock, locationStock } = computeStock(
+                  bp.id,
+                  bp.sku,
+                  dbMovements,
+                  Number(bp.current_stock || 0),
+                  locStock,
+                  activeDefaultLocId
+                );
 
-            return {
-              id: bp.id,
-              sku: bp.sku,
-              name: bp.name,
-              category: bp.category,
-              unitOfMeasure: bp.unit_of_measure,
-              costPrice: Number(bp.cost_price),
-              sellPrice: Number(bp.sell_price),
-              currency: bp.currency || 'INR',
-              barcode: bp.barcode || '',
-              reorderPoint: Number(bp.reorder_point),
-              maxStock: bp.max_stock !== undefined && bp.max_stock !== null ? Number(bp.max_stock) : undefined,
-              warehouseId: bp.warehouse_id || activeDefaultLocId,
-              hsnCode: bp.hsn_code || bp.tax_code || '',
-              taxCode: bp.tax_code || bp.hsn_code || '',
-              gstRate: bp.gst_rate !== undefined && bp.gst_rate !== null ? Number(bp.gst_rate) : 0,
-              taxRate: bp.tax_rate !== undefined && bp.tax_rate !== null ? Number(bp.tax_rate) : (Number(bp.gst_rate) || 0),
-              currentStock,
-              locationStock,
-              variantAttributes: bp.variant_attributes || {},
-              customFields: bp.custom_fields || {},
-              isActive: bp.is_active,
-              createdAt: bp.created_at,
-            };
-          });
-          setProducts(mapped);
-          localStorage.setItem(`invenza_tenant_${syncingForTenantId}_products`, JSON.stringify(mapped));
-        }
-      } catch (err) {
-        console.warn('Backend products sync fallback:', err);
-      }
-
-      // 4. Purchase Orders from PostgreSQL
-      try {
-        const backendPOs = await api.getPurchaseOrders();
-        if (backendPOs && Array.isArray(backendPOs)) {
-          const mappedPOs: PurchaseOrder[] = backendPOs.map((bpo: any) => ({
-            id: bpo.id,
-            poNumber: bpo.po_number,
-            supplierName: bpo.supplier_name,
-            status: bpo.status === 'completed' ? 'received' : bpo.status || 'pending',
-            targetLocationId: bpo.target_location_id,
-            targetLocationName: bpo.target_location_name || 'Main Fulfillment Center',
-            totalAmount: Number(bpo.total_amount || 0),
-            orderDate: bpo.order_date ? bpo.order_date.split('T')[0] : '',
-            receivedDate: bpo.received_date ? bpo.received_date.split('T')[0] : undefined,
-            notes: bpo.notes || '',
-            items: (bpo.items || []).map((it: any) => ({
-              productId: it.product_id,
-              sku: it.sku || 'SKU',
-              name: it.product_name || 'Item',
-              orderedQty: Number(it.ordered_qty || 0),
-              receivedQty: Number(it.received_qty || 0),
-              unitCost: Number(it.unit_cost || 0),
-            })),
-          }));
-          setPurchaseOrders(mappedPOs);
-          localStorage.setItem(`invenza_tenant_${syncingForTenantId}_pos`, JSON.stringify(mappedPOs));
-        }
-      } catch (poErr) {
-        console.warn('Backend POs sync fallback:', poErr);
-      }
-
-      // 5. Sales Orders from PostgreSQL
-      try {
-        const backendSOs = await api.getSalesOrders();
-        if (backendSOs && Array.isArray(backendSOs)) {
-          const mappedSOs: SalesOrder[] = backendSOs.map((bso: any) => ({
-            id: bso.id,
-            soNumber: bso.so_number,
-            customerName: bso.customer_name,
-            customerGstin: bso.customer_gstin,
-            billingAddress: bso.billing_address,
-            shippingAddress: bso.shipping_address,
-            state: bso.state,
-            stateCode: bso.state_code,
-            billingState: bso.billing_state,
-            billingStateCode: bso.billing_state_code,
-            shippingState: bso.shipping_state,
-            shippingStateCode: bso.shipping_state_code,
-            invoiceId: bso.invoice_id || undefined,
-            status: bso.status === 'completed' ? 'fulfilled' : bso.status || 'pending',
-            taxEnabled: bso.tax_enabled ?? true,
-            sourceLocationId: bso.source_location_id,
-            sourceLocationName: bso.source_location_name || 'Main Fulfillment Center',
-            totalAmount: Number(bso.total_amount || 0),
-            orderDate: bso.order_date ? bso.order_date.split('T')[0] : '',
-            fulfilledDate: bso.fulfilled_date ? bso.fulfilled_date.split('T')[0] : undefined,
-            createdAt: bso.created_at || bso.order_date,
-            voidReason: bso.void_reason,
-            voidedAt: bso.voided_at,
-            notes: bso.notes || '',
-            items: (bso.items || []).map((it: any) => ({
-              productId: it.product_id,
-              sku: it.sku || 'SKU',
-              name: it.product_name || 'Item',
-              orderedQty: Number(it.ordered_qty || 0),
-              fulfilledQty: Number(it.fulfilled_qty || 0),
-              unitPrice: Number(it.unit_price || 0),
-            })),
-          }));
-          setSalesOrders(mappedSOs);
-          localStorage.setItem(`invenza_tenant_${syncingForTenantId}_sos`, JSON.stringify(mappedSOs));
-        }
-      } catch (soErr) {
-        console.warn('Backend SOs sync fallback:', soErr);
-      }
-
-      // 6. Stock Transfers from PostgreSQL
-      try {
-        const backendTrs = await api.getTransfers();
-        if (backendTrs && Array.isArray(backendTrs)) {
-          const mappedTrs: StockTransfer[] = backendTrs.map((btr: any) => ({
-            id: btr.id,
-            transferNumber: btr.transfer_number,
-            sourceLocationId: btr.source_location_id,
-            sourceLocationName: btr.source_location_name || 'Source Warehouse',
-            targetLocationId: btr.target_location_id,
-            targetLocationName: btr.target_location_name || 'Destination Warehouse',
-            status: (btr.status || 'completed') as any,
-            date: btr.transfer_date ? btr.transfer_date.split('T')[0] : '',
-            notes: btr.notes || '',
-            items: (btr.items || []).map((it: any) => ({
-              productId: it.product_id,
-              sku: it.sku || 'SKU',
-              name: it.product_name || 'Item',
-              quantity: Number(it.quantity || 0),
-            })),
-          }));
-          setTransfers(mappedTrs);
-          localStorage.setItem(`invenza_tenant_${syncingForTenantId}_transfers`, JSON.stringify(mappedTrs));
-        }
-      } catch (trErr) {
-        console.warn('Backend transfers sync fallback:', trErr);
-      }
-
-      // 7. Adjustments from PostgreSQL
-      try {
-        const backendAdjs = await api.getAdjustments();
-        if (backendAdjs && Array.isArray(backendAdjs)) {
-          const mappedAdjs: AdjustmentRecord[] = backendAdjs.map((badj: any) => ({
-            id: badj.id,
-            adjustmentNumber: badj.adjustment_number,
-            locationId: badj.location_id,
-            locationName: badj.location_name || 'Warehouse',
-            productId: badj.product_id,
-            sku: badj.sku || 'SKU',
-            productName: badj.product_name || 'Product',
-            previousStock: Number(badj.previous_stock || 0),
-            newStock: Number(badj.new_stock || 0),
-            delta: Number(badj.delta || 0),
-            reasonCode: badj.reason_code,
-            notes: badj.notes || '',
-            date: badj.created_at ? badj.created_at.split('T')[0] : '',
-            author: badj.author || 'Admin',
-          }));
-          setAdjustments(mappedAdjs);
-          localStorage.setItem(`invenza_tenant_${syncingForTenantId}_adjustments`, JSON.stringify(mappedAdjs));
-        }
-      } catch (adjErr) {
-        console.warn('Backend adjustments sync fallback:', adjErr);
-      }
+                return {
+                  id: bp.id,
+                  sku: bp.sku,
+                  name: bp.name,
+                  category: bp.category,
+                  unitOfMeasure: bp.unit_of_measure,
+                  costPrice: Number(bp.cost_price),
+                  sellPrice: Number(bp.sell_price),
+                  currency: bp.currency || 'INR',
+                  barcode: bp.barcode || '',
+                  reorderPoint: Number(bp.reorder_point),
+                  maxStock: bp.max_stock !== undefined && bp.max_stock !== null ? Number(bp.max_stock) : undefined,
+                  warehouseId: bp.warehouse_id || activeDefaultLocId,
+                  hsnCode: bp.hsn_code || bp.tax_code || '',
+                  taxCode: bp.tax_code || bp.hsn_code || '',
+                  gstRate: bp.gst_rate !== undefined && bp.gst_rate !== null ? Number(bp.gst_rate) : 0,
+                  taxRate: bp.tax_rate !== undefined && bp.tax_rate !== null ? Number(bp.tax_rate) : (Number(bp.gst_rate) || 0),
+                  currentStock,
+                  locationStock,
+                  variantAttributes: bp.variant_attributes || {},
+                  customFields: bp.custom_fields || {},
+                  isActive: bp.is_active,
+                  createdAt: bp.created_at,
+                };
+              });
+              setProducts(mapped);
+              localStorage.setItem(`invenza_tenant_${syncingForTenantId}_products`, JSON.stringify(mapped));
+            }
+          } catch (err) {
+            console.warn('Backend products sync fallback:', err);
+          }
+        })(),
+        (async () => {
+          try {
+            const backendPOs = await api.getPurchaseOrders();
+            if (backendPOs && Array.isArray(backendPOs)) {
+              const mappedPOs: PurchaseOrder[] = backendPOs.map((bpo: any) => ({
+                id: bpo.id,
+                poNumber: bpo.po_number,
+                supplierName: bpo.supplier_name,
+                status: bpo.status === 'completed' ? 'received' : bpo.status || 'pending',
+                targetLocationId: bpo.target_location_id,
+                targetLocationName: bpo.target_location_name || 'Main Fulfillment Center',
+                totalAmount: Number(bpo.total_amount || 0),
+                orderDate: bpo.order_date ? bpo.order_date.split('T')[0] : '',
+                receivedDate: bpo.received_date ? bpo.received_date.split('T')[0] : undefined,
+                notes: bpo.notes || '',
+                items: (bpo.items || []).map((it: any) => ({
+                  productId: it.product_id,
+                  sku: it.sku || 'SKU',
+                  name: it.product_name || 'Item',
+                  orderedQty: Number(it.ordered_qty || 0),
+                  receivedQty: Number(it.received_qty || 0),
+                  unitCost: Number(it.unit_cost || 0),
+                })),
+              }));
+              setPurchaseOrders(mappedPOs);
+              localStorage.setItem(`invenza_tenant_${syncingForTenantId}_pos`, JSON.stringify(mappedPOs));
+            }
+          } catch (poErr) {
+            console.warn('Backend POs sync fallback:', poErr);
+          }
+        })(),
+        (async () => {
+          try {
+            const backendSOs = await api.getSalesOrders();
+            if (backendSOs && Array.isArray(backendSOs)) {
+              const mappedSOs: SalesOrder[] = backendSOs.map((bso: any) => ({
+                id: bso.id,
+                soNumber: bso.so_number,
+                customerName: bso.customer_name,
+                customerGstin: bso.customer_gstin,
+                billingAddress: bso.billing_address,
+                shippingAddress: bso.shipping_address,
+                state: bso.state,
+                stateCode: bso.state_code,
+                billingState: bso.billing_state,
+                billingStateCode: bso.billing_state_code,
+                shippingState: bso.shipping_state,
+                shippingStateCode: bso.shipping_state_code,
+                invoiceId: bso.invoice_id || undefined,
+                status: bso.status === 'completed' ? 'fulfilled' : bso.status || 'pending',
+                taxEnabled: bso.tax_enabled ?? true,
+                sourceLocationId: bso.source_location_id,
+                sourceLocationName: bso.source_location_name || 'Main Fulfillment Center',
+                totalAmount: Number(bso.total_amount || 0),
+                orderDate: bso.order_date ? bso.order_date.split('T')[0] : '',
+                fulfilledDate: bso.fulfilled_date ? bso.fulfilled_date.split('T')[0] : undefined,
+                createdAt: bso.created_at || bso.order_date,
+                voidReason: bso.void_reason,
+                voidedAt: bso.voided_at,
+                notes: bso.notes || '',
+                items: (bso.items || []).map((it: any) => ({
+                  productId: it.product_id,
+                  sku: it.sku || 'SKU',
+                  name: it.product_name || 'Item',
+                  orderedQty: Number(it.ordered_qty || 0),
+                  fulfilledQty: Number(it.fulfilled_qty || 0),
+                  unitPrice: Number(it.unit_price || 0),
+                })),
+              }));
+              setSalesOrders(mappedSOs);
+              localStorage.setItem(`invenza_tenant_${syncingForTenantId}_sos`, JSON.stringify(mappedSOs));
+            }
+          } catch (soErr) {
+            console.warn('Backend SOs sync fallback:', soErr);
+          }
+        })(),
+        (async () => {
+          try {
+            const backendTrs = await api.getTransfers();
+            if (backendTrs && Array.isArray(backendTrs)) {
+              const mappedTrs: StockTransfer[] = backendTrs.map((btr: any) => ({
+                id: btr.id,
+                transferNumber: btr.transfer_number,
+                sourceLocationId: btr.source_location_id,
+                sourceLocationName: btr.source_location_name || 'Source Warehouse',
+                targetLocationId: btr.target_location_id,
+                targetLocationName: btr.target_location_name || 'Destination Warehouse',
+                status: (btr.status || 'completed') as any,
+                date: btr.transfer_date ? btr.transfer_date.split('T')[0] : '',
+                notes: btr.notes || '',
+                items: (btr.items || []).map((it: any) => ({
+                  productId: it.product_id,
+                  sku: it.sku || 'SKU',
+                  name: it.product_name || 'Item',
+                  quantity: Number(it.quantity || 0),
+                })),
+              }));
+              setTransfers(mappedTrs);
+              localStorage.setItem(`invenza_tenant_${syncingForTenantId}_transfers`, JSON.stringify(mappedTrs));
+            }
+          } catch (trErr) {
+            console.warn('Backend transfers sync fallback:', trErr);
+          }
+        })(),
+        (async () => {
+          try {
+            const backendAdjs = await api.getAdjustments();
+            if (backendAdjs && Array.isArray(backendAdjs)) {
+              const mappedAdjs: AdjustmentRecord[] = backendAdjs.map((badj: any) => ({
+                id: badj.id,
+                adjustmentNumber: badj.adjustment_number,
+                locationId: badj.location_id,
+                locationName: badj.location_name || 'Warehouse',
+                productId: badj.product_id,
+                sku: badj.sku || 'SKU',
+                productName: badj.product_name || 'Product',
+                previousStock: Number(badj.previous_stock || 0),
+                newStock: Number(badj.new_stock || 0),
+                delta: Number(badj.delta || 0),
+                reasonCode: badj.reason_code,
+                notes: badj.notes || '',
+                date: badj.created_at ? badj.created_at.split('T')[0] : '',
+                author: badj.author || 'Admin',
+              }));
+              setAdjustments(mappedAdjs);
+              localStorage.setItem(`invenza_tenant_${syncingForTenantId}_adjustments`, JSON.stringify(mappedAdjs));
+            }
+          } catch (adjErr) {
+            console.warn('Backend adjustments sync fallback:', adjErr);
+          }
+        })(),
+      ]);
     } catch (err) {
       console.warn('Backend sync overall warning:', err);
     } finally {

@@ -177,54 +177,60 @@ router.post('/', async (req, res): Promise<void> => {
     const grandTotal = subtotal - discountTotal + taxTotal;
 
     // Create sales order and deduct stock in a transaction
-    const order = await prisma.$transaction(async (tx) => {
-      const createdOrder = await tx.salesOrder.create({
-        data: {
-          order_number: orderNumber,
-          customer_id: customer_id || null,
-          customer_name,
-          customer_phone,
-          customer_address,
-          customer_gstin,
-          godown_id: targetGodownId!,
-          order_date: new Date(order_date),
-          status: 'CONFIRMED',
-          subtotal,
-          tax_total: taxTotal,
-          discount_total: discountTotal,
-          grand_total: grandTotal,
-          notes,
-          created_by: req.user?.id,
-          items: {
-            create: computedItems,
-          },
-        },
-        include: {
-          items: { include: { product: true } },
-          godown: true,
-        },
-      });
-
-      // Automatically record stock movements (SALES_DELIVERY)
-      for (const item of computedItems) {
-        await LedgerService.recordMovement(
-          {
-            product_id: item.product_id,
+    const order = await prisma.$transaction(
+      async (tx) => {
+        const createdOrder = await tx.salesOrder.create({
+          data: {
+            order_number: orderNumber,
+            customer_id: customer_id || null,
+            customer_name,
+            customer_phone,
+            customer_address,
+            customer_gstin,
             godown_id: targetGodownId!,
-            movement_type: 'SALES_DELIVERY',
-            quantity: -item.quantity, // deduction
-            unit_cost: item.unit_price,
-            reference_type: 'SALES_ORDER',
-            reference_id: createdOrder.id,
-            notes: `Delivery for order ${orderNumber}`,
+            order_date: new Date(order_date),
+            status: 'CONFIRMED',
+            subtotal,
+            tax_total: taxTotal,
+            discount_total: discountTotal,
+            grand_total: grandTotal,
+            notes,
             created_by: req.user?.id,
+            items: {
+              create: computedItems,
+            },
           },
-          tx
-        );
-      }
+          include: {
+            items: { include: { product: true } },
+            godown: true,
+          },
+        });
 
-      return createdOrder;
-    });
+        // Automatically record stock movements (SALES_DELIVERY)
+        for (const item of computedItems) {
+          await LedgerService.recordMovement(
+            {
+              product_id: item.product_id,
+              godown_id: targetGodownId!,
+              movement_type: 'SALES_DELIVERY',
+              quantity: -item.quantity, // deduction
+              unit_cost: item.unit_price,
+              reference_type: 'SALES_ORDER',
+              reference_id: createdOrder.id,
+              notes: `Delivery for order ${orderNumber}`,
+              created_by: req.user?.id,
+            },
+            tx
+          );
+        }
+
+        return createdOrder;
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
+      }
+    );
 
     res.status(201).json(order);
   } catch (err: any) {

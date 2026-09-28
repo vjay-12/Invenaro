@@ -123,29 +123,35 @@ router.post('/:id/dispatch', async (req, res): Promise<void> => {
       return;
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.stockTransfer.update({
-        where: { id: transfer.id },
-        data: { status: 'IN_TRANSIT' },
-      });
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.stockTransfer.update({
+          where: { id: transfer.id },
+          data: { status: 'IN_TRANSIT' },
+        });
 
-      for (const item of transfer.items) {
-        await LedgerService.recordMovement(
-          {
-            product_id: item.product_id,
-            godown_id: transfer.source_godown_id,
-            movement_type: 'TRANSFER_OUT',
-            quantity: -Number(item.quantity),
-            unit_cost: Number(item.unit_cost),
-            reference_type: 'STOCK_TRANSFER',
-            reference_id: transfer.id,
-            notes: `Dispatch transfer ${transfer.transfer_number}`,
-            created_by: req.user?.id,
-          },
-          tx
-        );
+        for (const item of transfer.items) {
+          await LedgerService.recordMovement(
+            {
+              product_id: item.product_id,
+              godown_id: transfer.source_godown_id,
+              movement_type: 'TRANSFER_OUT',
+              quantity: -Number(item.quantity),
+              unit_cost: Number(item.unit_cost),
+              reference_type: 'STOCK_TRANSFER',
+              reference_id: transfer.id,
+              notes: `Dispatch transfer ${transfer.transfer_number}`,
+              created_by: req.user?.id,
+            },
+            tx
+          );
+        }
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
       }
-    });
+    );
 
     res.json({ success: true, message: 'Transfer dispatched into transit' });
   } catch (err) {
@@ -172,29 +178,35 @@ router.post('/:id/receive', async (req, res): Promise<void> => {
       return;
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.stockTransfer.update({
-        where: { id: transfer.id },
-        data: { status: 'RECEIVED' },
-      });
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.stockTransfer.update({
+          where: { id: transfer.id },
+          data: { status: 'RECEIVED' },
+        });
 
-      for (const item of transfer.items) {
-        await LedgerService.recordMovement(
-          {
-            product_id: item.product_id,
-            godown_id: transfer.destination_godown_id,
-            movement_type: 'TRANSFER_IN',
-            quantity: Number(item.quantity),
-            unit_cost: Number(item.unit_cost),
-            reference_type: 'STOCK_TRANSFER',
-            reference_id: transfer.id,
-            notes: `Receipt from transfer ${transfer.transfer_number}`,
-            created_by: req.user?.id,
-          },
-          tx
-        );
+        for (const item of transfer.items) {
+          await LedgerService.recordMovement(
+            {
+              product_id: item.product_id,
+              godown_id: transfer.destination_godown_id,
+              movement_type: 'TRANSFER_IN',
+              quantity: Number(item.quantity),
+              unit_cost: Number(item.unit_cost),
+              reference_type: 'STOCK_TRANSFER',
+              reference_id: transfer.id,
+              notes: `Receipt from transfer ${transfer.transfer_number}`,
+              created_by: req.user?.id,
+            },
+            tx
+          );
+        }
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
       }
-    });
+    );
 
     res.json({ success: true, message: 'Transfer successfully received at destination' });
   } catch (err) {

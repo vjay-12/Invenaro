@@ -88,8 +88,22 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
   // =========================================================================
   // SECTION A: CUSTOMERS STATE & ACTIONS
   // =========================================================================
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const cached = localStorage.getItem('invenza_cached_customers');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(() => {
+    try {
+      const cached = localStorage.getItem('invenza_cached_customers');
+      return !cached || JSON.parse(cached).length === 0;
+    } catch {
+      return true;
+    }
+  });
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerStatusFilter, setCustomerStatusFilter] = useState<'all' | 'active' | 'archived'>('all');
   const [customerCurrentPage, setCustomerCurrentPage] = useState(1);
@@ -140,34 +154,38 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
 
   const loadCustomers = async () => {
     try {
-      setIsLoadingCustomers(true);
+      if (customers.length === 0) {
+        setIsLoadingCustomers(true);
+      }
       const data = await api.getCustomers();
       const list = Array.isArray(data)
         ? data
         : (data && typeof data === 'object' && Array.isArray((data as any).customers) ? (data as any).customers : []);
-      setCustomers(
-        list.map((c: any) => ({
-          id: c.id,
-          tenantId: c.tenant_id,
-          legalName: c.legal_name || c.name || c.legalName || '',
-          email: c.email,
-          phone: c.phone,
-          gstin: c.gstin,
-          billingAddress: c.billing_address || c.billingAddress,
-          billingState: c.billing_state || c.billingState || c.state,
-          billingStateCode: c.billing_state_code || c.billingStateCode || c.state_code,
-          shippingAddress: c.shipping_address || c.shippingAddress,
-          shippingState: c.shipping_state || c.shippingState,
-          shippingStateCode: c.shipping_state_code || c.shippingStateCode,
-          state: c.state || c.billing_state,
-          stateCode: c.state_code || c.billing_state_code,
-          isActive: c.isActive !== undefined ? c.isActive : (c.is_active !== false),
-          orderCount: c.order_count || c.orderCount || 0,
-          totalRevenue: Number(c.total_revenue || c.totalRevenue || 0),
-          createdAt: c.created_at || c.createdAt,
-          updatedAt: c.updated_at || c.updatedAt,
-        }))
-      );
+      const mapped = list.map((c: any) => ({
+        id: c.id,
+        tenantId: c.tenant_id,
+        legalName: c.legal_name || c.name || c.legalName || '',
+        email: c.email,
+        phone: c.phone,
+        gstin: c.gstin,
+        billingAddress: c.billing_address || c.billingAddress,
+        billingState: c.billing_state || c.billingState || c.state,
+        billingStateCode: c.billing_state_code || c.billingStateCode || c.state_code,
+        shippingAddress: c.shipping_address || c.shippingAddress,
+        shippingState: c.shipping_state || c.shippingState,
+        shippingStateCode: c.shipping_state_code || c.shippingStateCode,
+        state: c.state || c.billing_state,
+        stateCode: c.state_code || c.billing_state_code,
+        isActive: c.isActive !== undefined ? c.isActive : (c.is_active !== false),
+        orderCount: c.order_count || c.orderCount || 0,
+        totalRevenue: Number(c.total_revenue || c.totalRevenue || 0),
+        createdAt: c.created_at || c.createdAt,
+        updatedAt: c.updated_at || c.updatedAt,
+      }));
+      setCustomers(mapped);
+      try {
+        localStorage.setItem('invenza_cached_customers', JSON.stringify(mapped));
+      } catch {}
     } catch (err: any) {
       console.error('Failed to load customers:', err);
       showToast(err.message || 'Failed to load customers', 'error');
