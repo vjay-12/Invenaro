@@ -316,16 +316,21 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
     if (!payModalSO) return;
     setIsPaying(true);
     try {
-      if (payModalSO.invoiceId) {
-        await api.markInvoicePaid(payModalSO.invoiceId, {
-          payment_method: payMethod,
-          payment_reference: payReference.trim() || undefined,
-        });
-      } else {
+      try {
         await api.paySalesOrder(payModalSO.id, {
           payment_method: payMethod,
           payment_reference: payReference.trim() || undefined,
         });
+      } catch (soPayErr: any) {
+        // Fallback to invoice payment if SO payment route encounters an issue
+        if (payModalSO.invoiceId) {
+          await api.markInvoicePaid(payModalSO.invoiceId, {
+            payment_method: payMethod,
+            payment_reference: payReference.trim() || undefined,
+          });
+        } else {
+          throw soPayErr;
+        }
       }
       showToast(`Payment recorded for ${payModalSO.soNumber}. Status updated to Paid.`, 'success');
       setPayModalSO(null);
@@ -336,7 +341,6 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
     } catch (err: any) {
       console.error('Failed to mark as paid:', err);
       showToast(err.message || 'Failed to record payment', 'error');
-      await refreshData?.();
     } finally {
       setIsPaying(false);
     }
@@ -394,6 +398,9 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
 
     if (raw === 'void' || raw === 'cancelled') return 'void';
     if (raw === 'paid') return 'paid';
+    if (so.invoice && (so.invoice.status?.toLowerCase() === 'paid' || Number(so.invoice.balanceAmount ?? (so.invoice as any).balance_amount ?? 1) === 0)) {
+      return 'paid';
+    }
     if (raw === 'invoiced' || raw === 'fulfilled' || raw === 'completed' || raw === 'dispatched' || raw === 'delivered' || Boolean(so.invoiceId)) {
       return isTaxOn ? 'invoiced' : 'receipted';
     }

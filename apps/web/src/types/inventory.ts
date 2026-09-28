@@ -138,7 +138,7 @@ export interface SalesOrder {
   shippingState?: string;
   shippingStateCode?: string;
   invoiceId?: string;
-  invoice?: Invoice;
+  invoice?: Invoice | any;
   status: 'draft' | 'dispatched' | 'invoiced' | 'receipted' | 'paid' | 'void' | 'pending' | 'fulfilled' | 'completed' | 'cancelled' | string;
   sourceLocationId: string;
   sourceLocationName: string;
@@ -212,6 +212,8 @@ export interface Invoice {
   totalSingleTax?: number;
   pdfUrl?: string;
   paidAt?: string;
+  paidAmount?: number;
+  balanceAmount?: number;
   paymentMethod?: string;
   paymentReference?: string;
   items: InvoiceItem[];

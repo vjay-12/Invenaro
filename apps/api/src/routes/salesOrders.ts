@@ -8,31 +8,56 @@ const router = Router();
 
 router.use(authMiddleware);
 
-const formatOrder = (o: any) => ({
-  ...o,
-  so_number: o.order_number,
-  source_location_id: o.godown_id,
-  source_location_name: o.godown?.name || 'Main Central Godown',
-  subtotal: Number(o.subtotal),
-  tax_total: Number(o.tax_total),
-  discount_total: Number(o.discount_total),
-  grand_total: Number(o.grand_total),
-  total_amount: Number(o.grand_total),
-  invoice_id: o.invoices?.[0]?.id || null,
-  invoice_number: o.invoices?.[0]?.invoice_number || null,
-  items: (o.items || []).map((it: any) => ({
-    ...it,
-    sku: it.product?.sku || it.sku || 'SKU',
-    product_name: it.product?.name || it.name || 'Item',
-    ordered_qty: Number(it.quantity),
-    quantity: Number(it.quantity),
-    unit_price: Number(it.unit_price),
-    discount: Number(it.discount),
-    tax_rate: Number(it.tax_rate),
-    tax_amount: Number(it.tax_amount),
-    total: Number(it.total),
-  })),
-});
+const formatOrder = (o: any) => {
+  const firstInvoice = o.invoices?.[0];
+  const isPaid = (o.invoices || []).some(
+    (inv: any) => inv.status === 'PAID' || Number(inv.balance_amount) <= 0
+  );
+
+  return {
+    ...o,
+    so_number: o.order_number,
+    source_location_id: o.godown_id,
+    source_location_name: o.godown?.name || 'Main Central Godown',
+    subtotal: Number(o.subtotal),
+    tax_total: Number(o.tax_total),
+    discount_total: Number(o.discount_total),
+    grand_total: Number(o.grand_total),
+    total_amount: Number(o.grand_total),
+    invoice_id: firstInvoice?.id || null,
+    invoice_number: firstInvoice?.invoice_number || null,
+    is_paid: isPaid,
+    payment_status: isPaid ? 'PAID' : 'UNPAID',
+    invoices: (o.invoices || []).map((inv: any) => ({
+      id: inv.id,
+      invoice_number: inv.invoice_number,
+      invoiceNumber: inv.invoice_number,
+      status: inv.status,
+      subtotal: Number(inv.subtotal),
+      tax_total: Number(inv.tax_total),
+      grand_total: Number(inv.grand_total),
+      grandTotal: Number(inv.grand_total),
+      paid_amount: Number(inv.paid_amount),
+      paidAmount: Number(inv.paid_amount),
+      balance_amount: Number(inv.balance_amount),
+      balanceAmount: Number(inv.balance_amount),
+      invoice_date: inv.invoice_date,
+      created_at: inv.created_at,
+    })),
+    items: (o.items || []).map((it: any) => ({
+      ...it,
+      sku: it.product?.sku || it.sku || 'SKU',
+      product_name: it.product?.name || it.name || 'Item',
+      ordered_qty: Number(it.quantity),
+      quantity: Number(it.quantity),
+      unit_price: Number(it.unit_price),
+      discount: Number(it.discount),
+      tax_rate: Number(it.tax_rate),
+      tax_amount: Number(it.tax_amount),
+      total: Number(it.total),
+    })),
+  };
+};
 
 router.get('/', async (req, res): Promise<void> => {
   try {
@@ -354,6 +379,104 @@ const handleDispatchOrder = async (req: any, res: any): Promise<void> => {
 
 router.post('/:id/dispatch', handleDispatchOrder);
 router.post('/:id/fulfill', handleDispatchOrder);
+
+router.post('/:id/pay', async (req, res): Promise<void> => {
+  const orderId = req.params.id;
+  const { payment_method = 'CASH', payment_reference, notes, paid_at } = req.body;
+
+  try {
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const order = await tx.salesOrder.findUnique({
+          where: { id: orderId },
+          include: {
+            customer: true,
+            invoices: {
+              include: { payments: true },
+            },
+          },
+        });
+
+        if (!order) {
+          throw new Error('Sales order not found');
+        }
+
+        // 1. Get or create invoice for this order
+        let invoice = order.invoices?.[0];
+        if (!invoice) {
+          const invCount = await tx.invoice.count();
+          const invoiceNumber = `INV-${new Date().getFullYear()}-${String(invCount + 1).padStart(4, '0')}`;
+          invoice = await tx.invoice.create({
+            data: {
+              invoice_number: invoiceNumber,
+              reference_order_id: order.id,
+              customer_id: order.customer_id,
+              godown_id: order.godown_id,
+              subtotal: order.subtotal,
+              tax_total: order.tax_total,
+              grand_total: order.grand_total,
+              paid_amount: 0,
+              balance_amount: order.grand_total,
+            },
+            include: { payments: true },
+          });
+        }
+
+        // 2. Prevent duplicate full payment if already settled
+        if (invoice.status === 'PAID' && Number(invoice.balance_amount) <= 0) {
+          return { order, invoice, payment: invoice.payments?.[0] };
+        }
+
+        // 3. Generate unique payment number
+        const payCount = await tx.payment.count();
+        const paymentNumber = `PAY-${new Date().getFullYear()}-${String(payCount + 1).padStart(4, '0')}-${Date.now().toString().slice(-4)}`;
+
+        // 4. Create Payment record
+        const payment = await tx.payment.create({
+          data: {
+            payment_number: paymentNumber,
+            invoice_id: invoice.id,
+            customer_id: order.customer_id || null,
+            payment_date: paid_at ? new Date(paid_at) : new Date(),
+            amount: invoice.grand_total,
+            payment_mode: String(payment_method || 'CASH').toUpperCase(),
+            reference_number: payment_reference || null,
+            notes: notes || `Payment for order ${order.order_number}`,
+          },
+        });
+
+        // 5. Update Invoice status & balance
+        const updatedInvoice = await tx.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            status: 'PAID',
+            paid_amount: invoice.grand_total,
+            balance_amount: 0,
+          },
+        });
+
+        return { order, invoice: updatedInvoice, payment };
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
+      }
+    );
+
+    res.json({
+      success: true,
+      message: `Payment recorded successfully for order ${result.order.order_number}`,
+      order_id: result.order.id,
+      invoice_id: result.invoice.id,
+      payment_id: result.payment?.id,
+      payment_number: result.payment?.payment_number,
+      status: 'PAID',
+    });
+  } catch (err: any) {
+    console.error('Pay sales order error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to record payment' });
+  }
+});
 
 router.get('/:id', async (req, res): Promise<void> => {
   try {

@@ -13,6 +13,7 @@ import {
   MovementType,
 } from '../types/inventory';
 import { useAuth } from './AuthContext';
+import { useLicense } from './LicenseContext';
 import { api } from '../services/api';
 import { formatMoney } from '../data/platformConstants';
 import { TaxConfig, TaxRegime } from '../utils/taxUtils';
@@ -94,6 +95,7 @@ const InventoryContext = createContext<InventoryContextType | undefined>(undefin
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading: authIsLoading, currencyCode, countryCode, taxType, taxRate, taxLabel, taxConfig } = useAuth();
+  const { hasModule } = useLicense();
   const currentTenantId = user?.tenantId || getInitialTenantId() || 'invenaro_main';
 
   const isLoadedRef = useRef(false);
@@ -252,35 +254,39 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const activeDefaultLocId = loadedLocs[0]?.id || locations[0]?.id || 'WH-MAIN';
 
-      // 2. Movements / Ledger from PostgreSQL
+      // 2. Movements / Ledger from PostgreSQL (only if licensed for ledger_ui)
       let dbMovements: StockMovement[] = [];
-      try {
-        const backendMovs = await api.getMovements();
-        if (backendMovs && Array.isArray(backendMovs)) {
-          dbMovements = backendMovs.map((bm: any) => ({
-            id: bm.id,
-            timestamp: bm.timestamp,
-            productId: bm.product_id,
-            sku: bm.sku || 'SKU',
-            productName: bm.product_name || 'Item',
-            movementType: bm.movement_type,
-            quantity: Number(bm.quantity),
-            locationId: bm.location_id,
-            locationName: bm.location_name || 'Main Fulfillment Center',
-            targetLocationId: bm.target_location_id,
-            targetLocationName: bm.target_location_name,
-            referenceType: bm.reference_type || 'INITIAL',
-            referenceId: bm.reference_id || 'OPENING-BALANCE',
-            reasonCode: bm.reason_code,
-            performedBy: bm.performed_by || 'Administrator',
-            unitCost: Number(bm.unit_cost || 0),
-            runningBalance: Number(bm.quantity || 0),
-          }));
-          setLedger(dbMovements);
-          localStorage.setItem(`invenza_tenant_${syncingForTenantId}_ledger`, JSON.stringify(dbMovements));
+      if (hasModule('ledger_ui')) {
+        try {
+          const backendMovs = await api.getMovements();
+          if (backendMovs && Array.isArray(backendMovs)) {
+            dbMovements = backendMovs.map((bm: any) => ({
+              id: bm.id,
+              timestamp: bm.timestamp,
+              productId: bm.product_id,
+              sku: bm.sku || 'SKU',
+              productName: bm.product_name || 'Item',
+              movementType: bm.movement_type,
+              quantity: Number(bm.quantity),
+              locationId: bm.location_id,
+              locationName: bm.location_name || 'Main Fulfillment Center',
+              targetLocationId: bm.target_location_id,
+              targetLocationName: bm.target_location_name,
+              referenceType: bm.reference_type || 'INITIAL',
+              referenceId: bm.reference_id || 'OPENING-BALANCE',
+              reasonCode: bm.reason_code,
+              performedBy: bm.performed_by || 'Administrator',
+              unitCost: Number(bm.unit_cost || 0),
+              runningBalance: Number(bm.quantity || 0),
+            }));
+            setLedger(dbMovements);
+            localStorage.setItem(`invenza_tenant_${syncingForTenantId}_ledger`, JSON.stringify(dbMovements));
+          }
+        } catch (movErr) {
+          console.warn('Backend movements sync fallback:', movErr);
         }
-      } catch (movErr) {
-        console.warn('Backend movements sync fallback:', movErr);
+      } else {
+        setLedger([]);
       }
 
       // 3-7. Concurrently sync Products, POs, SOs, Transfers, Adjustments from PostgreSQL
@@ -373,40 +379,65 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           try {
             const backendSOs = await api.getSalesOrders();
             if (backendSOs && Array.isArray(backendSOs)) {
-              const mappedSOs: SalesOrder[] = backendSOs.map((bso: any) => ({
-                id: bso.id,
-                soNumber: bso.so_number || bso.order_number,
-                customerName: bso.customer_name,
-                customerGstin: bso.customer_gstin,
-                billingAddress: bso.billing_address || bso.customer_address,
-                shippingAddress: bso.shipping_address || bso.customer_address,
-                state: bso.state,
-                stateCode: bso.state_code,
-                billingState: bso.billing_state,
-                billingStateCode: bso.billing_state_code,
-                shippingState: bso.shipping_state,
-                shippingStateCode: bso.shipping_state_code,
-                invoiceId: bso.invoice_id || (bso.invoices && bso.invoices[0]?.id) || undefined,
-                status: bso.status === 'completed' || bso.status === 'DELIVERED' ? 'fulfilled' : (bso.status === 'CONFIRMED' ? 'draft' : bso.status || 'pending'),
-                taxEnabled: bso.tax_enabled ?? true,
-                sourceLocationId: bso.source_location_id || bso.godown_id,
-                sourceLocationName: bso.source_location_name || bso.godown?.name || 'Main Fulfillment Center',
-                totalAmount: Number(bso.total_amount ?? bso.grand_total ?? 0),
-                orderDate: bso.order_date ? bso.order_date.split('T')[0] : '',
-                fulfilledDate: bso.fulfilled_date ? bso.fulfilled_date.split('T')[0] : undefined,
-                createdAt: bso.created_at || bso.order_date,
-                voidReason: bso.void_reason,
-                voidedAt: bso.voided_at,
-                notes: bso.notes || '',
-                items: (bso.items || []).map((it: any) => ({
-                  productId: it.product_id,
-                  sku: it.sku || it.product?.sku || 'SKU',
-                  name: it.product_name || it.product?.name || 'Item',
-                  orderedQty: Number(it.ordered_qty ?? it.quantity ?? 0),
-                  fulfilledQty: Number(it.fulfilled_qty || 0),
-                  unitPrice: Number(it.unit_price || 0),
-                })),
-              }));
+              const mappedSOs: SalesOrder[] = backendSOs.map((bso: any) => {
+                const firstInv = bso.invoices?.[0];
+                const isPaid =
+                  bso.status === 'PAID' ||
+                  bso.is_paid ||
+                  bso.payment_status === 'PAID' ||
+                  (firstInv && (firstInv.status === 'PAID' || Number(firstInv.balance_amount ?? firstInv.balanceAmount ?? 1) <= 0));
+
+                return {
+                  id: bso.id,
+                  soNumber: bso.so_number || bso.order_number,
+                  customerName: bso.customer_name,
+                  customerGstin: bso.customer_gstin,
+                  billingAddress: bso.billing_address || bso.customer_address,
+                  shippingAddress: bso.shipping_address || bso.customer_address,
+                  state: bso.state,
+                  stateCode: bso.state_code,
+                  billingState: bso.billing_state,
+                  billingStateCode: bso.billing_state_code,
+                  shippingState: bso.shipping_state,
+                  shippingStateCode: bso.shipping_state_code,
+                  invoiceId: bso.invoice_id || firstInv?.id || undefined,
+                  invoice: firstInv
+                    ? {
+                        id: firstInv.id,
+                        invoiceNumber: firstInv.invoice_number,
+                        status: firstInv.status,
+                        balanceAmount: Number(firstInv.balance_amount ?? firstInv.balanceAmount ?? 0),
+                        paidAmount: Number(firstInv.paid_amount ?? firstInv.paidAmount ?? 0),
+                        grandTotal: Number(firstInv.grand_total ?? firstInv.grandTotal ?? 0),
+                      }
+                    : undefined,
+                  status: isPaid
+                    ? 'paid'
+                    : bso.status === 'completed' || bso.status === 'DELIVERED'
+                    ? 'fulfilled'
+                    : bso.status === 'CONFIRMED'
+                    ? 'draft'
+                    : bso.status || 'pending',
+                  taxEnabled: bso.tax_enabled ?? true,
+                  sourceLocationId: bso.source_location_id || bso.godown_id,
+                  sourceLocationName: bso.source_location_name || bso.godown?.name || 'Main Fulfillment Center',
+                  totalAmount: Number(bso.total_amount ?? bso.grand_total ?? 0),
+                  orderDate: bso.order_date ? bso.order_date.split('T')[0] : '',
+                  fulfilledDate: bso.fulfilled_date ? bso.fulfilled_date.split('T')[0] : undefined,
+                  createdAt: bso.created_at || bso.order_date,
+                  voidReason: bso.void_reason,
+                  voidedAt: bso.voided_at,
+                  notes: bso.notes || '',
+                  items: (bso.items || []).map((it: any) => ({
+                    productId: it.product_id,
+                    sku: it.sku || it.product?.sku || 'SKU',
+                    name: it.product_name || it.product?.name || 'Item',
+                    orderedQty: Number(it.ordered_qty ?? it.quantity ?? 0),
+                    fulfilledQty: Number(it.fulfilled_qty || 0),
+                    unitPrice: Number(it.unit_price || 0),
+                  })),
+                };
+              });
               setSalesOrders(mappedSOs);
               localStorage.setItem(`invenza_tenant_${syncingForTenantId}_sos`, JSON.stringify(mappedSOs));
             }
@@ -415,6 +446,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
         })(),
         (async () => {
+          if (!hasModule('transfers')) {
+            setTransfers([]);
+            return;
+          }
           try {
             const backendTrs = await api.getTransfers();
             if (backendTrs && Array.isArray(backendTrs)) {
@@ -443,6 +478,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
         })(),
         (async () => {
+          if (!hasModule('stock_control')) {
+            setAdjustments([]);
+            return;
+          }
           try {
             const backendAdjs = await api.getAdjustments();
             if (backendAdjs && Array.isArray(backendAdjs)) {
@@ -477,7 +516,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       loadedTenantIdRef.current = syncingForTenantId;
       isSyncedRef.current = true;
     }
-  }, [user?.tenantId, currentTenantId, currency]);
+  }, [user?.tenantId, currentTenantId, currency, hasModule]);
 
   // Load tenant-isolated state and initial sync
   useEffect(() => {
@@ -1102,11 +1141,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (isValidUuid(poId)) {
         await api.receiveGoodsGRN(poId, receivedNotes, receivedItems);
         // Targeted refresh of affected entities only (PO status, stock balances, ledger movements)
-        const [backendPOs, backendProds, backendMovs] = await Promise.allSettled([
+        const fetchPromises: Promise<any>[] = [
           api.getPurchaseOrders(),
           api.getProducts(),
-          api.getMovements(),
-        ]);
+        ];
+        if (hasModule('ledger_ui')) {
+          fetchPromises.push(api.getMovements());
+        }
+        const [backendPOs, backendProds, backendMovs] = await Promise.allSettled(fetchPromises);
 
         if (backendPOs.status === 'fulfilled' && Array.isArray(backendPOs.value)) {
           const mapped = backendPOs.value.map((bpo: any) => ({
@@ -1306,47 +1348,75 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         );
 
         // Targeted refresh of affected entities without blocking
-        Promise.allSettled([
+        const fulfillPromises: Promise<any>[] = [
           api.getSalesOrders(),
           api.getProducts(),
-          api.getMovements(),
-        ]).then(([updatedSOs]) => {
+        ];
+        if (hasModule('ledger_ui')) {
+          fulfillPromises.push(api.getMovements());
+        }
+        Promise.allSettled(fulfillPromises).then(([updatedSOs]) => {
           if (updatedSOs.status === 'fulfilled' && Array.isArray(updatedSOs.value)) {
-            setSalesOrders(updatedSOs.value.map((bso: any) => ({
-              id: bso.id,
-              soNumber: bso.so_number || bso.order_number,
-              customerName: bso.customer_name,
-              customerGstin: bso.customer_gstin,
-              billingAddress: bso.billing_address || bso.customer_address,
-              shippingAddress: bso.shipping_address || bso.customer_address,
-              state: bso.state,
-              stateCode: bso.state_code,
-              billingState: bso.billing_state,
-              billingStateCode: bso.billing_state_code,
-              shippingState: bso.shipping_state,
-              shippingStateCode: bso.shipping_state_code,
-              invoiceId: bso.invoice_id || (bso.invoices && bso.invoices[0]?.id) || undefined,
-              status: bso.status === 'completed' || bso.status === 'DELIVERED' ? 'fulfilled' : (bso.status === 'CONFIRMED' ? 'draft' : bso.status || 'pending'),
-              taxEnabled: bso.tax_enabled ?? true,
-              sourceLocationId: bso.source_location_id || bso.godown_id,
-              sourceLocationName: bso.source_location_name || bso.godown?.name || 'Main Fulfillment Center',
-              totalAmount: Number(bso.total_amount ?? bso.grand_total ?? 0),
-              orderDate: bso.order_date ? bso.order_date.split('T')[0] : '',
-              fulfilledDate: bso.fulfilled_date ? bso.fulfilled_date.split('T')[0] : undefined,
-              createdAt: bso.created_at || bso.order_date,
-              voidReason: bso.void_reason,
-              voidedAt: bso.voided_at,
-              notes: bso.notes || '',
-              items: (bso.items || []).map((it: any) => ({
-                productId: it.product_id,
-                sku: it.sku || it.product?.sku || 'SKU',
-                name: it.product_name || it.product?.name || 'Item',
-                orderedQty: Number(it.ordered_qty ?? it.quantity ?? 0),
-                fulfilledQty: Number(it.fulfilled_qty || (bso.status === 'DELIVERED' ? (it.ordered_qty ?? it.quantity ?? 0) : 0)),
-                unitPrice: Number(it.unit_price || 0),
-                discountPercent: Number(it.discount || 0),
-              })),
-            })));
+            setSalesOrders(updatedSOs.value.map((bso: any) => {
+              const firstInv = bso.invoices?.[0];
+              const isPaid =
+                bso.status === 'PAID' ||
+                bso.is_paid ||
+                bso.payment_status === 'PAID' ||
+                (firstInv && (firstInv.status === 'PAID' || Number(firstInv.balance_amount ?? firstInv.balanceAmount ?? 1) <= 0));
+
+              return {
+                id: bso.id,
+                soNumber: bso.so_number || bso.order_number,
+                customerName: bso.customer_name,
+                customerGstin: bso.customer_gstin,
+                billingAddress: bso.billing_address || bso.customer_address,
+                shippingAddress: bso.shipping_address || bso.customer_address,
+                state: bso.state,
+                stateCode: bso.state_code,
+                billingState: bso.billing_state,
+                billingStateCode: bso.billing_state_code,
+                shippingState: bso.shipping_state,
+                shippingStateCode: bso.shipping_state_code,
+                invoiceId: bso.invoice_id || firstInv?.id || undefined,
+                invoice: firstInv
+                  ? {
+                      id: firstInv.id,
+                      invoiceNumber: firstInv.invoice_number,
+                      status: firstInv.status,
+                      balanceAmount: Number(firstInv.balance_amount ?? firstInv.balanceAmount ?? 0),
+                      paidAmount: Number(firstInv.paid_amount ?? firstInv.paidAmount ?? 0),
+                      grandTotal: Number(firstInv.grand_total ?? firstInv.grandTotal ?? 0),
+                    }
+                  : undefined,
+                status: isPaid
+                  ? 'paid'
+                  : bso.status === 'completed' || bso.status === 'DELIVERED'
+                  ? 'fulfilled'
+                  : bso.status === 'CONFIRMED'
+                  ? 'draft'
+                  : bso.status || 'pending',
+                taxEnabled: bso.tax_enabled ?? true,
+                sourceLocationId: bso.source_location_id || bso.godown_id,
+                sourceLocationName: bso.source_location_name || bso.godown?.name || 'Main Fulfillment Center',
+                totalAmount: Number(bso.total_amount ?? bso.grand_total ?? 0),
+                orderDate: bso.order_date ? bso.order_date.split('T')[0] : '',
+                fulfilledDate: bso.fulfilled_date ? bso.fulfilled_date.split('T')[0] : undefined,
+                createdAt: bso.created_at || bso.order_date,
+                voidReason: bso.void_reason,
+                voidedAt: bso.voided_at,
+                notes: bso.notes || '',
+                items: (bso.items || []).map((it: any) => ({
+                  productId: it.product_id,
+                  sku: it.sku || it.product?.sku || 'SKU',
+                  name: it.product_name || it.product?.name || 'Item',
+                  orderedQty: Number(it.ordered_qty ?? it.quantity ?? 0),
+                  fulfilledQty: Number(it.fulfilled_qty || (bso.status === 'DELIVERED' ? (it.ordered_qty ?? it.quantity ?? 0) : 0)),
+                  unitPrice: Number(it.unit_price || 0),
+                  discountPercent: Number(it.discount || 0),
+                })),
+              };
+            }));
           }
         });
 
