@@ -423,6 +423,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                         id: firstInv.id,
                         invoiceNumber: firstInv.invoice_number,
                         status: firstInv.status,
+                        subtotal: Number(firstInv.subtotal ?? firstInv.subTotal ?? 0),
+                        totalTaxableValue: Number(firstInv.subtotal ?? firstInv.totalTaxableValue ?? 0),
+                        taxTotal: Number(firstInv.tax_total ?? firstInv.taxTotal ?? 0),
                         balanceAmount: Number(firstInv.balance_amount ?? firstInv.balanceAmount ?? 0),
                         paidAmount: Number(firstInv.paid_amount ?? firstInv.paidAmount ?? 0),
                         grandTotal: Number(firstInv.grand_total ?? firstInv.grandTotal ?? 0),
@@ -430,11 +433,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                     : undefined,
                   status: isPaid
                     ? 'paid'
+                    : bso.status === 'CANCELLED'
+                    ? 'void'
                     : bso.status === 'completed' || bso.status === 'DELIVERED'
                     ? 'fulfilled'
                     : bso.status === 'CONFIRMED'
                     ? 'draft'
                     : bso.status || 'pending',
+                  isPaid,
+                  paymentStatus: isPaid ? 'PAID' : 'UNPAID',
+                  subtotal: Number(bso.subtotal ?? 0),
+                  taxTotal: Number(bso.tax_total ?? 0),
                   taxEnabled: bso.tax_enabled ?? true,
                   sourceLocationId: bso.source_location_id || bso.godown_id,
                   sourceLocationName: bso.source_location_name || bso.godown?.name || 'Main Fulfillment Center',
@@ -1453,6 +1462,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                       id: firstInv.id,
                       invoiceNumber: firstInv.invoice_number,
                       status: firstInv.status,
+                      subtotal: Number(firstInv.subtotal ?? firstInv.subTotal ?? 0),
+                      totalTaxableValue: Number(firstInv.subtotal ?? firstInv.totalTaxableValue ?? 0),
+                      taxTotal: Number(firstInv.tax_total ?? firstInv.taxTotal ?? 0),
                       balanceAmount: Number(firstInv.balance_amount ?? firstInv.balanceAmount ?? 0),
                       paidAmount: Number(firstInv.paid_amount ?? firstInv.paidAmount ?? 0),
                       grandTotal: Number(firstInv.grand_total ?? firstInv.grandTotal ?? 0),
@@ -1460,11 +1472,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   : undefined,
                 status: isPaid
                   ? 'paid'
+                  : bso.status === 'CANCELLED'
+                  ? 'void'
                   : bso.status === 'completed' || bso.status === 'DELIVERED'
                   ? 'fulfilled'
                   : bso.status === 'CONFIRMED'
                   ? 'draft'
                   : bso.status || 'pending',
+                isPaid,
+                paymentStatus: isPaid ? 'PAID' : 'UNPAID',
+                subtotal: Number(bso.subtotal ?? 0),
+                taxTotal: Number(bso.tax_total ?? 0),
                 taxEnabled: bso.tax_enabled ?? true,
                 sourceLocationId: bso.source_location_id || bso.godown_id,
                 sourceLocationName: bso.source_location_name || bso.godown?.name || 'Main Fulfillment Center',

@@ -34,7 +34,10 @@ const formatOrder = (o: any) => {
       invoiceNumber: inv.invoice_number,
       status: inv.status,
       subtotal: Number(inv.subtotal),
+      subTotal: Number(inv.subtotal),
+      totalTaxableValue: Number(inv.subtotal),
       tax_total: Number(inv.tax_total),
+      taxTotal: Number(inv.tax_total),
       grand_total: Number(inv.grand_total),
       grandTotal: Number(inv.grand_total),
       paid_amount: Number(inv.paid_amount),
@@ -58,6 +61,78 @@ const formatOrder = (o: any) => {
     })),
   };
 };
+
+router.get('/summary', async (req, res): Promise<void> => {
+  try {
+    const godownId = req.query.godown_id ? String(req.query.godown_id) : undefined;
+    const whereClause: any = {};
+    if (godownId && godownId !== 'all') {
+      whereClause.godown_id = godownId;
+    }
+
+    const orders = await prisma.salesOrder.findMany({
+      where: whereClause,
+      include: {
+        invoices: {
+          include: {
+            payments: true,
+          },
+        },
+      },
+    });
+
+    let ordersInvoiced = 0;
+    let totalTaxCollected = 0;
+    let taxableTurnover = 0;
+    let voidRegister = 0;
+
+    for (const order of orders) {
+      const isCancelled = order.status === 'CANCELLED';
+      const hasVoidInvoice = (order.invoices || []).some((inv) => inv.status === 'VOID');
+
+      if (isCancelled || hasVoidInvoice) {
+        voidRegister++;
+        continue;
+      }
+
+      // 1. Orders Invoiced: Count orders that have a valid, non-void invoice/document
+      const validInvoices = (order.invoices || []).filter((inv) => inv.status !== 'VOID');
+      if (validInvoices.length > 0) {
+        ordersInvoiced++;
+      }
+
+      // 2. Total Tax Collected: Total tax amount from payments that have actually been recorded/settled.
+      // Do NOT count merely invoiced tax as collected.
+      // 3. Taxable Turnover: Total taxable sales value from successfully dispatched/settled sales.
+      // Do NOT include Draft or merely Invoiced orders.
+      for (const inv of validInvoices) {
+        const grandTotal = Number(inv.grand_total);
+        const taxTotal = Number(inv.tax_total);
+        const subtotal = Number(inv.subtotal);
+        const paidAmount = Number(inv.paid_amount);
+
+        if (inv.status === 'PAID' || (grandTotal > 0 && paidAmount >= grandTotal)) {
+          totalTaxCollected += taxTotal;
+          taxableTurnover += subtotal;
+        } else if (paidAmount > 0 && grandTotal > 0) {
+          const ratio = Math.min(1, paidAmount / grandTotal);
+          totalTaxCollected += taxTotal * ratio;
+          taxableTurnover += subtotal * ratio;
+        }
+      }
+    }
+
+    res.json({
+      orders_invoiced: ordersInvoiced,
+      total_tax_collected: Number(totalTaxCollected.toFixed(2)),
+      taxable_turnover: Number(taxableTurnover.toFixed(2)),
+      void_register: voidRegister,
+    });
+  } catch (err: any) {
+    console.error('Fetch sales orders summary error:', err);
+    res.status(500).json({ error: 'Failed to fetch sales orders summary' });
+  }
+});
 
 router.get('/', async (req, res): Promise<void> => {
   try {
@@ -550,6 +625,88 @@ router.get('/:id', async (req, res): Promise<void> => {
     res.json(formatOrder(order));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch order details' });
+  }
+});
+
+router.post('/:id/void', async (req, res): Promise<void> => {
+  const orderId = req.params.id;
+  const { reason = 'Order voided by user' } = req.body;
+
+  try {
+    const order = await prisma.salesOrder.findUnique({
+      where: { id: orderId },
+      include: {
+        invoices: true,
+        items: true,
+      },
+    });
+
+    if (!order) {
+      res.status(404).json({ error: 'Sales order not found' });
+      return;
+    }
+
+    if (order.status === 'CANCELLED') {
+      res.status(400).json({ error: 'Sales order is already voided' });
+      return;
+    }
+
+    const wasDispatched = order.status === 'DELIVERED';
+
+    await prisma.$transaction(
+      async (tx) => {
+        // 1. Mark order as CANCELLED with void reason
+        const existingNotes = order.notes || '';
+        const voidNote = `[VOIDED: ${String(reason).trim()} at ${new Date().toISOString()}]`;
+        const updatedNotes = existingNotes ? `${existingNotes} | ${voidNote}` : voidNote;
+
+        await tx.salesOrder.update({
+          where: { id: order.id },
+          data: {
+            status: 'CANCELLED',
+            notes: updatedNotes,
+          },
+        });
+
+        // 2. Mark any linked invoices as VOID
+        await tx.invoice.updateMany({
+          where: { reference_order_id: order.id },
+          data: { status: 'VOID' },
+        });
+
+        // 3. If order was dispatched, reverse stock movements with RETURN_IN
+        if (wasDispatched && order.items.length > 0) {
+          for (const item of order.items) {
+            await LedgerService.recordMovement(
+              {
+                product_id: item.product_id,
+                godown_id: order.godown_id,
+                movement_type: 'RETURN_IN',
+                quantity: Number(item.quantity),
+                unit_cost: Number(item.unit_price),
+                reference_type: 'SALES_ORDER',
+                reference_id: order.id,
+                notes: `Stock returned from voided order ${order.order_number}: ${String(reason).trim()}`,
+                created_by: req.user?.id,
+              },
+              tx
+            );
+          }
+        }
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
+      }
+    );
+
+    res.json({
+      success: true,
+      message: `Sales order ${order.order_number} has been voided successfully`,
+    });
+  } catch (err: any) {
+    console.error('Void sales order error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to void sales order' });
   }
 });
 

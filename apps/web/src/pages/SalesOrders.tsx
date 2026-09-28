@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   IconFileUp,
   IconPlus,
@@ -305,6 +305,7 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
       // Always keep the 'all' filter selected after status changes and refresh data
       setStatusFilter('all');
       await refreshData?.();
+      await fetchSummary();
     } catch (err: any) {
       setFulfillError(err.message || 'Error fulfilling order');
     } finally {
@@ -338,6 +339,7 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
       // Always keep the 'all' filter selected after status changes
       setStatusFilter('all');
       await refreshData?.();
+      await fetchSummary();
     } catch (err: any) {
       console.error('Failed to mark as paid:', err);
       showToast(err.message || 'Failed to record payment', 'error');
@@ -363,10 +365,12 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
       // Always keep the 'all' filter selected after status changes
       setStatusFilter('all');
       await refreshData?.();
+      await fetchSummary();
     } catch (err: any) {
       console.error('Void error:', err);
       showToast(err.message || 'Failed to void order', 'error');
       await refreshData?.();
+      await fetchSummary();
     } finally {
       setIsVoiding(false);
     }
@@ -382,10 +386,12 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
       // Always keep the 'all' filter selected after status changes
       setStatusFilter('all');
       await refreshData?.();
+      await fetchSummary();
     } catch (err: any) {
       console.error('Delete error:', err);
       showToast(err.message || 'Failed to delete order. Only Draft orders can be deleted.', 'error');
       await refreshData?.();
+      await fetchSummary();
     } finally {
       setIsDeleting(false);
     }
@@ -415,35 +421,67 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
     let voidCount = 0;
 
     salesOrders.forEach((so) => {
+      if (selectedLocationId !== 'all' && so.sourceLocationId !== selectedLocationId) {
+        return;
+      }
       const st = getNormalizedStatus(so);
       if (st === 'void') {
         voidCount++;
+        return;
       }
       if (st === 'invoiced' || st === 'receipted' || st === 'paid') {
         invoicedCount++;
       }
       if (st === 'paid') {
-        if (so.invoice) {
-          const inv = so.invoice;
-          realizedTaxableTurnover += Number(inv.totalTaxableValue || 0);
-          if (inv.taxType === 'GST') {
-            realizedTax += Number(inv.totalCgst || 0) + Number(inv.totalSgst || 0) + Number(inv.totalIgst || 0);
-          } else {
-            realizedTax += Number(inv.totalSingleTax || 0);
-          }
-        } else {
-          realizedTaxableTurnover += Number(so.totalAmount || 0);
-        }
+        const inv = so.invoice;
+        const taxVal = Number(inv?.taxTotal ?? (inv as any)?.tax_total ?? so.taxTotal ?? 0);
+        const taxableVal = Number(inv?.totalTaxableValue ?? inv?.subtotal ?? (inv as any)?.sub_total ?? so.subtotal ?? (so.totalAmount - taxVal));
+        realizedTax += taxVal;
+        realizedTaxableTurnover += taxableVal;
       }
     });
 
     return {
       invoicedCount,
-      realizedTax,
-      realizedTaxableTurnover,
+      realizedTax: Number(realizedTax.toFixed(2)),
+      realizedTaxableTurnover: Number(realizedTaxableTurnover.toFixed(2)),
       voidCount,
     };
-  }, [salesOrders, isOrgTaxEnabled]);
+  }, [salesOrders, selectedLocationId, isOrgTaxEnabled]);
+
+  const [backendSummary, setBackendSummary] = useState<{
+    orders_invoiced: number;
+    total_tax_collected: number;
+    taxable_turnover: number;
+    void_register: number;
+  } | null>(null);
+
+  const fetchSummary = useCallback(async () => {
+    try {
+      const summary = await api.getSalesOrdersSummary(selectedLocationId);
+      if (summary && typeof summary.orders_invoiced === 'number') {
+        setBackendSummary(summary);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch sales orders summary:', err);
+    }
+  }, [selectedLocationId]);
+
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary, salesOrders]);
+
+  const displayMetrics = useMemo(() => {
+    if (backendSummary) {
+      return {
+        invoicedCount: backendSummary.orders_invoiced,
+        realizedTax: backendSummary.total_tax_collected,
+        realizedTaxableTurnover: backendSummary.taxable_turnover,
+        voidCount: backendSummary.void_register,
+      };
+    }
+    return kpiMetrics;
+  }, [backendSummary, kpiMetrics]);
 
   // Filter & Sort Sales Orders (Default: Most recent creation timestamp first)
   const filteredSOs = useMemo(() => {
@@ -592,7 +630,10 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
             type="button"
-            onClick={() => refreshData?.()}
+            onClick={async () => {
+              await refreshData?.();
+              await fetchSummary();
+            }}
             className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] hover:bg-slate-50 dark:hover:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-subtle transition-colors"
             title="Refresh Orders"
           >
@@ -616,8 +657,8 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           title={isOrgTaxEnabled ? 'Orders Invoiced' : 'Orders Receipted'}
-          value={kpiMetrics.invoicedCount}
-          subtitle="Sequential unbroken register"
+          value={displayMetrics.invoicedCount}
+          subtitle={isOrgTaxEnabled ? 'Orders with valid legal invoices' : 'Orders with valid commercial receipts'}
           icon={IconFileText}
           colorScheme="teal"
           badge={taxConfig.complianceBadge}
@@ -625,8 +666,8 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
         />
         <StatCard
           title="Total Tax Collected"
-          value={isOrgTaxEnabled ? formatCurrency(kpiMetrics.realizedTax) : 'N/A (Disabled)'}
-          subtitle={isOrgTaxEnabled ? `${taxConfig.taxCollectedSubtitle} (Settled)` : 'Commercial receipts only'}
+          value={isOrgTaxEnabled ? formatCurrency(displayMetrics.realizedTax) : 'N/A (Disabled)'}
+          subtitle={isOrgTaxEnabled ? 'Tax realized from settled payments' : 'Commercial receipts only (No tax)'}
           icon={
             taxConfig.currencyCode === 'EUR'
               ? IconEuro
@@ -639,19 +680,19 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
         />
         <StatCard
           title="Taxable Turnover"
-          value={formatCurrency(kpiMetrics.realizedTaxableTurnover)}
-          subtitle="Settled sales value dispatched"
+          value={formatCurrency(displayMetrics.realizedTaxableTurnover)}
+          subtitle="Net taxable value of settled sales"
           icon={IconLayers}
           colorScheme="slate"
           compact={true}
         />
         <StatCard
           title="Void Register"
-          value={kpiMetrics.voidCount}
-          subtitle="Preserved audit numbers"
+          value={displayMetrics.voidCount}
+          subtitle="Cancelled & voided sales orders"
           icon={IconAlertTriangle}
-          colorScheme={kpiMetrics.voidCount > 0 ? 'amber' : 'slate'}
-          badge={kpiMetrics.voidCount > 0 ? 'Audit Logged' : 'Zero Voids'}
+          colorScheme={displayMetrics.voidCount > 0 ? 'amber' : 'slate'}
+          badge={displayMetrics.voidCount > 0 ? 'Audit Logged' : 'Zero Voids'}
           compact={true}
         />
       </div>

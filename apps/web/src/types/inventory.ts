@@ -146,7 +146,11 @@ export interface SalesOrder {
   fulfilledDate?: string;
   createdAt?: string;
   items: SOLineItem[];
+  subtotal?: number;
+  taxTotal?: number;
   totalAmount: number;
+  isPaid?: boolean;
+  paymentStatus?: string;
   taxEnabled?: boolean;
   notes?: string;
   voidReason?: string;

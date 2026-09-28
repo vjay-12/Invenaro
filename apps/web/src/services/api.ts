@@ -744,6 +744,15 @@ export const api = {
       body: JSON.stringify({ notes, items }),
     }),
   getSalesOrders: async () => fetchWithFallback<any[]>('/sales-orders'),
+  getSalesOrdersSummary: async (godownId?: string) => {
+    const q = godownId && godownId !== 'all' ? `?godown_id=${encodeURIComponent(godownId)}` : '';
+    return fetchWithFallback<{
+      orders_invoiced: number;
+      total_tax_collected: number;
+      taxable_turnover: number;
+      void_register: number;
+    }>(`/sales-orders/summary${q}`);
+  },
   createSalesOrder: async (data: any) =>
     fetchWithFallback<any>('/sales-orders', { method: 'POST', body: JSON.stringify(data) }),
   fulfillSalesOrder: async (soId: string) =>
