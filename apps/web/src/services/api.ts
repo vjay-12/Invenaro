@@ -717,7 +717,12 @@ export const api = {
     fetchWithFallback<any>(`/godowns/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Ledger
-  getMovements: async () => fetchWithFallback<any[]>('/ledger/'),
+  getMovements: async () => {
+    const res = await fetchWithFallback<any>('/ledger/');
+    if (Array.isArray(res)) return res;
+    if (res?.data && Array.isArray(res.data)) return res.data;
+    return [];
+  },
   clearLedger: async () =>
     fetchWithFallback<any>('/ledger/clear-all', { method: 'DELETE' }),
 
@@ -986,7 +991,10 @@ export const api = {
     if (query?.product_id) q.set('product_id', query.product_id);
     if (query?.movement_type) q.set('movement_type', query.movement_type);
     const qs = q.toString();
-    return fetchWithFallback<any>(`/ledger${qs ? '?' + qs : ''}`);
+    const res = await fetchWithFallback<any>(`/ledger/${qs ? '?' + qs : ''}`);
+    if (Array.isArray(res)) return res;
+    if (res?.data && Array.isArray(res.data)) return res.data;
+    return res || [];
   },
   getSettings: async () => fetchWithFallback<any>('/settings'),
   updateSettings: async (data: any) =>

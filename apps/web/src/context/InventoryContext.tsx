@@ -254,39 +254,43 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const activeDefaultLocId = loadedLocs[0]?.id || locations[0]?.id || 'WH-MAIN';
 
-      // 2. Movements / Ledger from PostgreSQL (only if licensed for ledger_ui)
+      // 2. Movements / Ledger from PostgreSQL
       let dbMovements: StockMovement[] = [];
-      if (hasModule('ledger_ui')) {
-        try {
-          const backendMovs = await api.getMovements();
-          if (backendMovs && Array.isArray(backendMovs)) {
-            dbMovements = backendMovs.map((bm: any) => ({
-              id: bm.id,
-              timestamp: bm.timestamp,
-              productId: bm.product_id,
-              sku: bm.sku || 'SKU',
-              productName: bm.product_name || 'Item',
-              movementType: bm.movement_type,
-              quantity: Number(bm.quantity),
-              locationId: bm.location_id,
-              locationName: bm.location_name || 'Main Fulfillment Center',
-              targetLocationId: bm.target_location_id,
-              targetLocationName: bm.target_location_name,
-              referenceType: bm.reference_type || 'INITIAL',
-              referenceId: bm.reference_id || 'OPENING-BALANCE',
-              reasonCode: bm.reason_code,
-              performedBy: bm.performed_by || 'Administrator',
-              unitCost: Number(bm.unit_cost || 0),
-              runningBalance: Number(bm.quantity || 0),
-            }));
-            setLedger(dbMovements);
-            localStorage.setItem(`invenza_tenant_${syncingForTenantId}_ledger`, JSON.stringify(dbMovements));
-          }
-        } catch (movErr) {
-          console.warn('Backend movements sync fallback:', movErr);
+      try {
+        const backendMovs = await api.getMovements();
+        const rawMovs = Array.isArray(backendMovs)
+          ? backendMovs
+          : (backendMovs as any)?.data && Array.isArray((backendMovs as any).data)
+          ? (backendMovs as any).data
+          : [];
+
+        if (rawMovs.length > 0) {
+          dbMovements = rawMovs.map((bm: any) => ({
+            id: bm.id,
+            timestamp: bm.timestamp || bm.created_at || new Date().toISOString(),
+            productId: bm.product_id,
+            sku: bm.sku || bm.product?.sku || 'SKU',
+            productName: bm.product_name || bm.product?.name || 'Item',
+            movementType: bm.movement_type,
+            quantity: Number(bm.quantity),
+            locationId: bm.location_id || bm.godown_id,
+            locationName: bm.location_name || bm.godown?.name || 'Main Central Godown',
+            targetLocationId: bm.target_location_id,
+            targetLocationName: bm.target_location_name,
+            referenceType: bm.reference_type || 'INITIAL',
+            referenceId: bm.reference_id || 'OPENING-BALANCE',
+            reasonCode: bm.reason_code,
+            performedBy: bm.performed_by || 'Administrator',
+            unitCost: Number(bm.unit_cost || 0),
+            runningBalance: Number(bm.balance_after ?? bm.quantity ?? 0),
+          }));
+          setLedger(dbMovements);
+          localStorage.setItem(`invenza_tenant_${syncingForTenantId}_ledger`, JSON.stringify(dbMovements));
+        } else {
+          setLedger([]);
         }
-      } else {
-        setLedger([]);
+      } catch (movErr) {
+        console.warn('Backend movements sync fallback:', movErr);
       }
 
       // 3-7. Concurrently sync Products, POs, SOs, Transfers, Adjustments from PostgreSQL
@@ -306,6 +310,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   activeDefaultLocId
                 );
 
+                const finalCurrentStock =
+                  bp.current_stock !== undefined && bp.current_stock !== null
+                    ? Number(bp.current_stock)
+                    : currentStock;
+                const finalLocationStock =
+                  locStock && Object.keys(locStock).length > 0
+                    ? locStock
+                    : locationStock;
+
                 return {
                   id: bp.id,
                   sku: bp.sku,
@@ -323,8 +336,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   taxCode: bp.tax_code || bp.hsn_code || '',
                   gstRate: bp.gst_rate !== undefined && bp.gst_rate !== null ? Number(bp.gst_rate) : 0,
                   taxRate: bp.tax_rate !== undefined && bp.tax_rate !== null ? Number(bp.tax_rate) : (Number(bp.gst_rate) || 0),
-                  currentStock,
-                  locationStock,
+                  currentStock: finalCurrentStock,
+                  locationStock: finalLocationStock,
                   variantAttributes: bp.variant_attributes || {},
                   customFields: bp.custom_fields || {},
                   isActive: bp.is_active,
@@ -1144,10 +1157,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const fetchPromises: Promise<any>[] = [
           api.getPurchaseOrders(),
           api.getProducts(),
+          api.getMovements(),
         ];
-        if (hasModule('ledger_ui')) {
-          fetchPromises.push(api.getMovements());
-        }
         const [backendPOs, backendProds, backendMovs] = await Promise.allSettled(fetchPromises);
 
         if (backendPOs.status === 'fulfilled' && Array.isArray(backendPOs.value)) {
@@ -1180,17 +1191,25 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         if (backendProds.status === 'fulfilled' && Array.isArray(backendProds.value)) {
           const activeLocId = locations[0]?.id || 'WH-MAIN';
-          const movList = backendMovs.status === 'fulfilled' && Array.isArray(backendMovs.value)
-            ? backendMovs.value.map((bm: any) => ({
+          const rawMovs = backendMovs.status === 'fulfilled'
+            ? Array.isArray(backendMovs.value)
+              ? backendMovs.value
+              : backendMovs.value?.data && Array.isArray(backendMovs.value.data)
+              ? backendMovs.value.data
+              : []
+            : [];
+
+          const movList = rawMovs.length > 0
+            ? rawMovs.map((bm: any) => ({
                 id: bm.id,
-                timestamp: bm.timestamp,
+                timestamp: bm.timestamp || bm.created_at || new Date().toISOString(),
                 productId: bm.product_id,
-                sku: bm.sku || 'SKU',
-                productName: bm.product_name || 'Item',
+                sku: bm.sku || bm.product?.sku || 'SKU',
+                productName: bm.product_name || bm.product?.name || 'Item',
                 movementType: bm.movement_type,
                 quantity: Number(bm.quantity),
-                locationId: bm.location_id,
-                locationName: bm.location_name || 'Main Fulfillment Center',
+                locationId: bm.location_id || bm.godown_id,
+                locationName: bm.location_name || bm.godown?.name || 'Main Central Godown',
                 targetLocationId: bm.target_location_id,
                 targetLocationName: bm.target_location_name,
                 referenceType: bm.reference_type || 'INITIAL',
@@ -1198,9 +1217,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 reasonCode: bm.reason_code,
                 performedBy: bm.performed_by || 'Administrator',
                 unitCost: Number(bm.unit_cost || 0),
-                runningBalance: Number(bm.quantity || 0),
+                runningBalance: Number(bm.balance_after ?? bm.quantity ?? 0),
               }))
             : updatedLedger;
+
+          if (movList.length > 0) {
+            setLedger(movList);
+          }
 
           const mappedProds: Product[] = backendProds.value.map((bp: any) => {
             const locStock = bp.location_stock || {};
@@ -1212,6 +1235,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               locStock,
               activeLocId
             );
+            const finalCurrentStock =
+              bp.current_stock !== undefined && bp.current_stock !== null
+                ? Number(bp.current_stock)
+                : currentStock;
+            const finalLocationStock =
+              locStock && Object.keys(locStock).length > 0
+                ? locStock
+                : locationStock;
+
             return {
               id: bp.id,
               sku: bp.sku,
@@ -1351,11 +1383,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const fulfillPromises: Promise<any>[] = [
           api.getSalesOrders(),
           api.getProducts(),
+          api.getMovements(),
         ];
-        if (hasModule('ledger_ui')) {
-          fulfillPromises.push(api.getMovements());
-        }
-        Promise.allSettled(fulfillPromises).then(([updatedSOs]) => {
+        Promise.allSettled(fulfillPromises).then(([updatedSOs, updatedProds, updatedMovs]) => {
           if (updatedSOs.status === 'fulfilled' && Array.isArray(updatedSOs.value)) {
             setSalesOrders(updatedSOs.value.map((bso: any) => {
               const firstInv = bso.invoices?.[0];
@@ -1415,6 +1445,71 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   unitPrice: Number(it.unit_price || 0),
                   discountPercent: Number(it.discount || 0),
                 })),
+              };
+            }));
+          }
+
+          if (updatedMovs.status === 'fulfilled') {
+            const rawMovs = Array.isArray(updatedMovs.value)
+              ? updatedMovs.value
+              : updatedMovs.value?.data && Array.isArray(updatedMovs.value.data)
+              ? updatedMovs.value.data
+              : [];
+            if (rawMovs.length > 0) {
+              const movList = rawMovs.map((bm: any) => ({
+                id: bm.id,
+                timestamp: bm.timestamp || bm.created_at || new Date().toISOString(),
+                productId: bm.product_id,
+                sku: bm.sku || bm.product?.sku || 'SKU',
+                productName: bm.product_name || bm.product?.name || 'Item',
+                movementType: bm.movement_type,
+                quantity: Number(bm.quantity),
+                locationId: bm.location_id || bm.godown_id,
+                locationName: bm.location_name || bm.godown?.name || 'Main Central Godown',
+                targetLocationId: bm.target_location_id,
+                targetLocationName: bm.target_location_name,
+                referenceType: bm.reference_type || 'INITIAL',
+                referenceId: bm.reference_id || 'OPENING-BALANCE',
+                reasonCode: bm.reason_code,
+                performedBy: bm.performed_by || 'Administrator',
+                unitCost: Number(bm.unit_cost || 0),
+                runningBalance: Number(bm.balance_after ?? bm.quantity ?? 0),
+              }));
+              setLedger(movList);
+            }
+          }
+
+          if (updatedProds.status === 'fulfilled' && Array.isArray(updatedProds.value)) {
+            const activeLocId = locations[0]?.id || 'WH-MAIN';
+            setProducts(updatedProds.value.map((bp: any) => {
+              const locStock = bp.location_stock || {};
+              const finalCurrentStock =
+                bp.current_stock !== undefined && bp.current_stock !== null
+                  ? Number(bp.current_stock)
+                  : Number(bp.total_stock || 0);
+              return {
+                id: bp.id,
+                sku: bp.sku,
+                name: bp.name,
+                category: bp.category,
+                unitOfMeasure: bp.unit_of_measure,
+                costPrice: Number(bp.cost_price),
+                sellPrice: Number(bp.sell_price),
+                currency: bp.currency || 'INR',
+                barcode: bp.barcode || '',
+                reorderPoint: Number(bp.reorder_point),
+                maxStock: bp.max_stock !== undefined && bp.max_stock !== null ? Number(bp.max_stock) : undefined,
+                warehouseId: bp.warehouse_id || activeLocId,
+                hsnCode: bp.hsn_code || bp.tax_code || '',
+                taxCode: bp.tax_code || bp.hsn_code || '',
+                gstRate: bp.gst_rate !== undefined && bp.gst_rate !== null ? Number(bp.gst_rate) : 0,
+                taxRate: bp.tax_rate !== undefined && bp.tax_rate !== null ? Number(bp.tax_rate) : (Number(bp.gst_rate) || 0),
+                currentStock: finalCurrentStock,
+                locationStock: locStock,
+                variantAttributes: bp.variant_attributes || {},
+                customFields: bp.custom_fields || {},
+                isActive: bp.is_active,
+                createdAt: bp.created_at,
               };
             }));
           }

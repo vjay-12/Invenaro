@@ -1,14 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../db.js';
 import { authMiddleware } from '../middlewares/auth.js';
-import { requireModule } from '../middlewares/entitlements.js';
-
 const router = Router();
 
 router.use(authMiddleware);
-router.use(requireModule('ledger_ui'));
 
-router.get('/', async (req, res): Promise<void> => {
+router.get(['/', ''] as any, async (req, res): Promise<void> => {
   try {
     const { godown_id, product_id, movement_type, limit = '100', offset = '0' } = req.query;
 
@@ -33,9 +30,15 @@ router.get('/', async (req, res): Promise<void> => {
 
     const formatted = movements.map((m) => ({
       ...m,
+      product_id: m.product_id,
+      product_name: m.product?.name || 'Item',
+      sku: m.product?.sku || 'SKU',
       quantity: Number(m.quantity),
       unit_cost: Number(m.unit_cost),
       balance_after: Number(m.balance_after),
+      timestamp: m.created_at.toISOString(),
+      location_id: m.godown_id,
+      location_name: m.godown?.name || 'Main Central Godown',
     }));
 
     res.json({

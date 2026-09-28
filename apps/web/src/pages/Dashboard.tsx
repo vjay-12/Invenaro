@@ -8,6 +8,7 @@ import {
 } from '../components/icons';
 import { useInventory } from '../context/InventoryContext';
 import { useTheme } from '../context/ThemeContext';
+import { useLicense } from '../context/LicenseContext';
 import { TabType } from '../components/layout/Sidebar';
 import { PageMeta } from '../components/common/PageMeta';
 import {
@@ -27,14 +28,20 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const { hasModule } = useLicense();
   const {
     products,
     ledger,
     salesOrders,
     formatCurrency,
     selectedLocationId,
+    refreshData,
   } = useInventory();
 
+  // Authoritative mount sync from PostgreSQL backend
+  React.useEffect(() => {
+    refreshData?.();
+  }, [refreshData]);
 
   // Filter products if a specific warehouse is selected
   const activeProducts = React.useMemo(() => {
@@ -84,9 +91,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     const result: { day: string; inQty: number; outQty: number }[] = [];
 
     for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(now.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const localDateStr = `${year}-${month}-${day}`;
       const dayName = days[d.getDay()];
 
       let inQty = 0;
@@ -94,10 +103,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
       ledger.forEach((m) => {
         if (!m.timestamp) return;
-        const mDate = m.timestamp.split('T')[0];
-        if (mDate === dateStr) {
-          if (m.movementType === 'IN') inQty += Math.abs(m.quantity);
-          else if (m.movementType === 'OUT') outQty += Math.abs(m.quantity);
+        const mDateObj = new Date(m.timestamp);
+        if (isNaN(mDateObj.getTime())) return;
+
+        const mYear = mDateObj.getFullYear();
+        const mMonth = String(mDateObj.getMonth() + 1).padStart(2, '0');
+        const mDay = String(mDateObj.getDate()).padStart(2, '0');
+        const mLocalDateStr = `${mYear}-${mMonth}-${mDay}`;
+
+        if (mLocalDateStr === localDateStr) {
+          const type = String(m.movementType || '').toUpperCase();
+          const isInbound = ['IN', 'PURCHASE_RECEIPT', 'ADJUSTMENT_ADD', 'RETURN_IN', 'TRANSFER_IN'].includes(type);
+          const isOutbound = ['OUT', 'SALES_DELIVERY', 'ADJUSTMENT_REDUCE', 'RETURN_OUT', 'TRANSFER_OUT'].includes(type);
+
+          if (isInbound) inQty += Math.abs(m.quantity || 0);
+          else if (isOutbound) outQty += Math.abs(m.quantity || 0);
         }
       });
 
@@ -125,55 +145,55 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const topSellingProducts = React.useMemo(() => {
     const soldMap: Record<string, { id: string; name: string; sku: string; units: number }> = {};
 
+    // 1. Live ledger dispatches (SALES_DELIVERY or OUT)
     ledger.forEach((m) => {
-      if (m.movementType === 'OUT' && (m.productName || m.sku)) {
+      const type = String(m.movementType || '').toUpperCase();
+      if (['OUT', 'SALES_DELIVERY', 'RETURN_OUT'].includes(type) && (m.productName || m.sku)) {
         const key = m.productId || m.sku;
-        const qty = Math.abs(m.quantity);
-        if (!soldMap[key]) {
-          soldMap[key] = {
-            id: m.productId || key,
-            name: m.productName || 'Product Variant',
-            sku: m.sku || '',
-            units: 0,
-          };
-        }
-        soldMap[key].units += qty;
-      }
-    });
-
-    salesOrders.forEach((so) => {
-      if (so.status === 'fulfilled') {
-        so.items.forEach((item) => {
-          const key = item.productId || item.sku;
-          const qty = item.fulfilledQty || item.orderedQty || 0;
+        const qty = Math.abs(m.quantity || 0);
+        if (qty > 0) {
           if (!soldMap[key]) {
             soldMap[key] = {
-              id: item.productId || key,
-              name: item.name || 'Product Variant',
-              sku: item.sku || '',
+              id: m.productId || key,
+              name: m.productName || 'Product Variant',
+              sku: m.sku || '',
               units: 0,
             };
           }
           soldMap[key].units += qty;
-        });
+        }
       }
     });
 
-    const sorted = Object.values(soldMap).sort((a, b) => b.units - a.units);
-    if (sorted.length > 0) {
-      return sorted.slice(0, 4);
+    // 2. If no ledger movements found, aggregate from confirmed/fulfilled sales orders
+    if (Object.keys(soldMap).length === 0) {
+      salesOrders.forEach((so) => {
+        const st = String(so.status || '').toLowerCase();
+        if (['fulfilled', 'completed', 'delivered', 'paid', 'invoiced', 'confirmed'].includes(st)) {
+          (so.items || []).forEach((item) => {
+            const key = item.productId || item.sku;
+            const qty = Number(item.fulfilledQty || item.orderedQty || (item as any).quantity || 0);
+            if (qty > 0 && key) {
+              if (!soldMap[key]) {
+                soldMap[key] = {
+                  id: item.productId || key,
+                  name: item.name || 'Product Variant',
+                  sku: item.sku || '',
+                  units: 0,
+                };
+              }
+              soldMap[key].units += qty;
+            }
+          });
+        }
+      });
     }
 
-    // Default fallback from active catalog items with realistic metrics
-    return activeProducts.slice(0, 4).map((p, idx) => ({
-      id: p.id,
-      name: p.name,
-      sku: p.sku,
-      units: [135, 62, 54, 41][idx] || Math.max(12, Math.round((p.currentStock || 10) * 0.4)),
-    }));
-  }, [ledger, salesOrders, activeProducts]);
+    const sorted = Object.values(soldMap).sort((a, b) => b.units - a.units);
+    return sorted.slice(0, 4);
+  }, [ledger, salesOrders]);
 
-  // Turnover rate calculation
+  // Turnover rate calculation based on real output and stock
   const turnoverRate = React.useMemo(() => {
     const totalOut = velocitySummary.totalOut;
     const totalStock = activeProducts.reduce((sum, p) => sum + Math.max(0, p.currentStock || 0), 0);
@@ -181,10 +201,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       const rate = ((totalOut * 12) / totalStock).toFixed(1);
       return `${rate}x`;
     }
-    return totalStock === 0 ? '0.0x' : '0.0x';
+    return '0.0x';
   }, [velocitySummary.totalOut, activeProducts]);
 
-  // Category distribution
+  // Category distribution from active catalog
   const categoryData = React.useMemo(() => {
     const catMap: Record<string, number> = {};
     let totalUnits = 0;
@@ -203,9 +223,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       }))
       .sort((a, b) => b.units - a.units);
 
-    return entries.length > 0
-      ? entries.slice(0, 4)
-      : [{ name: 'General Stock', units: activeProducts.length, percentage: 100 }];
+    return entries.slice(0, 4);
   }, [activeProducts]);
 
   // Recent movements for condensed feed
@@ -308,7 +326,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             {formatCurrency(totalValuation)}
           </div>
           <div className="text-[11px] font-medium text-emerald-600 dark:text-[#5dcaa5] mt-1 flex items-center gap-1">
-            <span>+4.2% vs last week</span>
+            <span>{activeProducts.length > 0 ? `${activeProducts.length} SKUs in inventory` : 'No inventory value'}</span>
           </div>
         </div>
 
@@ -333,8 +351,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           <div className="text-lg sm:text-xl font-bold text-amber-600 dark:text-[#ef9f27]">
             {lowStockItems.length}
           </div>
-          <div className="text-[11px] font-medium text-amber-600 dark:text-[#ef9f27] mt-1">
-            Action required
+          <div className={`text-[11px] font-medium mt-1 ${lowStockItems.length > 0 ? 'text-amber-600 dark:text-[#ef9f27]' : 'text-emerald-600 dark:text-[#5dcaa5]'}`}>
+            {lowStockItems.length > 0 ? 'Action required' : 'Stock levels healthy'}
           </div>
         </div>
 
@@ -346,7 +364,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           <div className="text-lg sm:text-xl font-bold text-rose-600 dark:text-[#e24b4a]">
             {outOfStockItems.length}
           </div>
-          <div className="text-[11px] font-medium text-rose-600 dark:text-[#e24b4a] mt-1">
+          <div className={`text-[11px] font-medium mt-1 ${outOfStockItems.length > 0 ? 'text-rose-600 dark:text-[#e24b4a]' : 'text-emerald-600 dark:text-[#5dcaa5]'}`}>
             {outOfStockItems.length > 0 ? 'Needs restock' : 'All items in stock'}
           </div>
         </div>
@@ -485,24 +503,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </div>
 
             <div className="space-y-2.5">
-              {categoryData.map((cat) => (
-                <div key={cat.name} className="space-y-1">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-700 dark:text-[#a8abb4] font-medium truncate">
-                      {cat.name}
-                    </span>
-                    <span className="font-mono text-slate-500 dark:text-[#7a7d87]">
-                      {cat.percentage}%
-                    </span>
-                  </div>
-                  <div className="h-[5px] w-full overflow-hidden rounded-full bg-slate-100 dark:bg-[#1e2330]">
-                    <div
-                      className="h-full rounded-full bg-teal-600 dark:bg-[#5dcaa5] transition-all duration-300"
-                      style={{ width: `${Math.max(4, cat.percentage)}%` }}
-                    />
-                  </div>
+              {categoryData.length === 0 ? (
+                <div className="text-center py-6 text-slate-400 dark:text-[#7a7d87] text-xs font-mono">
+                  No category data recorded.
                 </div>
-              ))}
+              ) : (
+                categoryData.map((cat) => (
+                  <div key={cat.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-700 dark:text-[#a8abb4] font-medium truncate">
+                        {cat.name}
+                      </span>
+                      <span className="font-mono text-slate-500 dark:text-[#7a7d87]">
+                        {cat.percentage}%
+                      </span>
+                    </div>
+                    <div className="h-[5px] w-full overflow-hidden rounded-full bg-slate-100 dark:bg-[#1e2330]">
+                      <div
+                        className="h-full rounded-full bg-teal-600 dark:bg-[#5dcaa5] transition-all duration-300"
+                        style={{ width: `${Math.max(4, cat.percentage)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -514,14 +538,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               <span className="text-xs sm:text-[13px] font-semibold text-slate-900 dark:text-[#e8e8e4]">
                 Live Movement Ledger
               </span>
-              <button
-                type="button"
-                onClick={() => onNavigate('ledger')}
-                className="text-[11px] font-medium text-teal-600 dark:text-[#5dcaa5] hover:underline flex items-center gap-1 transition-colors"
-              >
-                <span>View all</span>
-                <IconArrowRight className="h-3 w-3" />
-              </button>
+              {hasModule('ledger_ui') ? (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('ledger')}
+                  className="text-[11px] font-medium text-teal-600 dark:text-[#5dcaa5] hover:underline flex items-center gap-1 transition-colors"
+                >
+                  <span>View all</span>
+                  <IconArrowRight className="h-3 w-3" />
+                </button>
+              ) : (
+                <span className="text-[10px] font-mono text-slate-400 dark:text-[#7a7d87]">
+                  Latest 5
+                </span>
+              )}
             </div>
 
             <div className="space-y-2.5">
@@ -531,9 +561,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 </div>
               ) : (
                 recentMovements.map((m) => {
-                  const isPositive = m.movementType === 'IN';
-                  const isNegative = m.movementType === 'OUT';
-                  const isTransfer = m.movementType === 'TRANSFER';
+                  const type = String(m.movementType || '').toUpperCase();
+                  const isPositive = ['IN', 'PURCHASE_RECEIPT', 'ADJUSTMENT_ADD', 'RETURN_IN', 'TRANSFER_IN'].includes(type);
+                  const isNegative = ['OUT', 'SALES_DELIVERY', 'ADJUSTMENT_REDUCE', 'RETURN_OUT', 'TRANSFER_OUT'].includes(type);
+                  const isTransfer = type.startsWith('TRANSFER');
 
                   const badgeStyle = isPositive
                     ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 dark:bg-[#085041] dark:text-[#5dcaa5] dark:border-transparent'
@@ -543,7 +574,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                     ? 'bg-sky-50 text-sky-800 border border-sky-200/80 dark:bg-[#3c3489] dark:text-[#afa9ec] dark:border-transparent'
                     : 'bg-amber-50 text-amber-800 border border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-400 dark:border-transparent';
 
-                  const badgeLabel = isTransfer ? 'TRF' : m.movementType;
+                  const badgeLabel = type === 'SALES_DELIVERY'
+                    ? 'DELIVERY'
+                    : type === 'PURCHASE_RECEIPT'
+                    ? 'RECEIPT'
+                    : type === 'ADJUSTMENT_ADD'
+                    ? 'ADJUST +'
+                    : type === 'ADJUSTMENT_REDUCE'
+                    ? 'ADJUST -'
+                    : isTransfer
+                    ? 'TRF'
+                    : type;
+
+                  const qty = Math.abs(m.quantity || 0);
 
                   return (
                     <div key={m.id} className="flex items-center gap-2.5 text-[11px]">
@@ -551,10 +594,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                         {badgeLabel}
                       </span>
                       <span className="text-slate-800 dark:text-[#c7c9d1] font-medium truncate flex-1">
-                        {m.productName}
+                        {m.productName || m.sku || 'Inventory Item'}
                       </span>
-                      <span className="font-mono text-slate-500 dark:text-[#7a7d87] shrink-0 font-medium">
-                        {isPositive ? `+${Math.abs(m.quantity)}` : isNegative ? `-${Math.abs(m.quantity)}` : Math.abs(m.quantity)}
+                      <span className={`font-mono shrink-0 font-medium ${isPositive ? 'text-emerald-600 dark:text-[#5dcaa5]' : isNegative ? 'text-rose-600 dark:text-[#f0997b]' : 'text-slate-500 dark:text-[#7a7d87]'}`}>
+                        {isPositive ? `+${qty}` : isNegative ? `-${qty}` : qty}
                       </span>
                     </div>
                   );
