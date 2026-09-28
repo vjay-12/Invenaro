@@ -33,6 +33,7 @@ import {
 } from '../components/icons';
 import { useInventory } from '../context/InventoryContext';
 import { useLicense } from '../context/LicenseContext';
+import * as XLSX from 'xlsx';
 import { Product, AdjustmentReasonCode, CurrencyCode } from '../types/inventory';
 import { Modal } from '../components/common/Modal';
 import { BarcodeLabelModal } from '../components/common/BarcodeLabelModal';
@@ -637,37 +638,13 @@ export const Products: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Robust CSV Parser
-  const parseCSVText = (text: string) => {
-    const lines = text.split(/\r\n|\n/).map((l) => l.trim()).filter(Boolean);
-    if (lines.length < 2) return [];
+  // Unified Table Row Processor for both CSV and XLSX
+  const processImportTable = (rows: string[][]) => {
+    if (!rows || rows.length < 2) return [];
 
-    const parseRow = (line: string): string[] => {
-      const result: string[] = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-          if (inQuotes && line[i + 1] === '"') {
-            current += '"';
-            i++;
-          } else {
-            inQuotes = !inQuotes;
-          }
-        } else if (char === ',' && !inQuotes) {
-          result.push(current.trim());
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      result.push(current.trim());
-      return result;
-    };
-
-    const headers = parseRow(lines[0]).map((h) =>
-      h.toLowerCase().replace(/[\s_-]+/g, '')
+    const headerRow = rows[0];
+    const headers = headerRow.map((h) =>
+      String(h).toLowerCase().replace(/[\s_-]+/g, '')
     );
 
     const taxCodeIdx = headers.findIndex((h) =>
@@ -714,59 +691,70 @@ export const Products: React.FC = () => {
     );
 
     const parsed: any[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const cols = parseRow(lines[i]);
-      if (cols.length === 0 || (cols.length === 1 && !cols[0])) continue;
+    const seenSkusInFile = new Set<string>();
+
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i];
+      if (cols.length === 0 || cols.every((c) => !c || String(c).trim() === '')) continue;
 
       const sku =
-        skuIdx !== -1 && cols[skuIdx] ? cols[skuIdx].toUpperCase().trim() : '';
+        skuIdx !== -1 && cols[skuIdx] ? String(cols[skuIdx]).toUpperCase().trim() : '';
       const name =
-        nameIdx !== -1 && cols[nameIdx] ? cols[nameIdx].trim() : '';
+        nameIdx !== -1 && cols[nameIdx] ? String(cols[nameIdx]).trim() : '';
       const category =
-        catIdx !== -1 && cols[catIdx] ? cols[catIdx].trim() : 'General';
+        catIdx !== -1 && cols[catIdx] ? String(cols[catIdx]).trim() : 'General';
       const stock =
         stockIdx !== -1 && cols[stockIdx]
-          ? parseFloat(cols[stockIdx].replace(/[^0-9.]/g, '')) || 0
+          ? parseFloat(String(cols[stockIdx]).replace(/[^0-9.]/g, '')) || 0
           : 0;
-      const uom = uomIdx !== -1 && cols[uomIdx] ? cols[uomIdx].trim() : 'pcs';
+      const uom = uomIdx !== -1 && cols[uomIdx] ? String(cols[uomIdx]).trim() : 'pcs';
       const cost =
         costIdx !== -1 && cols[costIdx]
-          ? parseFloat(cols[costIdx].replace(/[^0-9.]/g, '')) || 0
+          ? parseFloat(String(cols[costIdx]).replace(/[^0-9.]/g, '')) || 0
           : 0;
       const sell =
         sellIdx !== -1 && cols[sellIdx]
-          ? parseFloat(cols[sellIdx].replace(/[^0-9.]/g, '')) || 0
+          ? parseFloat(String(cols[sellIdx]).replace(/[^0-9.]/g, '')) || 0
           : 0;
       const rawCur =
         currencyIdx !== -1 && cols[currencyIdx]
-          ? cols[currencyIdx].trim().toUpperCase()
+          ? String(cols[currencyIdx]).trim().toUpperCase()
           : '';
       const prodCurrency: CurrencyCode = rawCur === 'INR' ? 'INR' : currency;
       const reorder =
         reorderIdx !== -1 && cols[reorderIdx]
-          ? parseFloat(cols[reorderIdx].replace(/[^0-9.]/g, '')) || 10
+          ? parseFloat(String(cols[reorderIdx]).replace(/[^0-9.]/g, '')) || 10
           : 10;
       const maxStockVal =
         maxStockIdx !== -1 && cols[maxStockIdx]
-          ? parseFloat(cols[maxStockIdx].replace(/[^0-9.]/g, '')) || undefined
+          ? parseFloat(String(cols[maxStockIdx]).replace(/[^0-9.]/g, '')) || undefined
           : undefined;
       const barcode =
         barcodeIdx !== -1 && cols[barcodeIdx]
-          ? cols[barcodeIdx].trim()
+          ? String(cols[barcodeIdx]).trim()
           : `890${Math.floor(100000000 + Math.random() * 900000000)}`;
       const variant =
-        variantIdx !== -1 && cols[variantIdx] ? cols[variantIdx].trim() : '';
+        variantIdx !== -1 && cols[variantIdx] ? String(cols[variantIdx]).trim() : '';
 
       const rawTaxCode =
-        taxCodeIdx !== -1 && cols[taxCodeIdx] ? cols[taxCodeIdx].trim() : '';
+        taxCodeIdx !== -1 && cols[taxCodeIdx] ? String(cols[taxCodeIdx]).trim() : '';
       const rawRateStr =
-        taxRateIdx !== -1 && cols[taxRateIdx] ? cols[taxRateIdx].replace(/[^0-9.]/g, '') : '';
+        taxRateIdx !== -1 && cols[taxRateIdx] ? String(cols[taxRateIdx]).replace(/[^0-9.]/g, '') : '';
       const rawRate = rawRateStr !== '' ? parseFloat(rawRateStr) : NaN;
 
-      // Validate required tax classification and rate
+      // Validate required fields, tax classification, and duplicate SKU checks
       const rowErrors: string[] = [];
-      if (!sku) rowErrors.push('Missing SKU');
-      if (!name) rowErrors.push('Missing Product Name');
+      if (!sku) {
+        rowErrors.push(skuIdx === -1 ? 'Missing required column: SKU' : 'Missing SKU');
+      } else if (seenSkusInFile.has(sku)) {
+        rowErrors.push('Duplicate SKU in upload file');
+      } else {
+        seenSkusInFile.add(sku);
+      }
+
+      if (!name) {
+        rowErrors.push(nameIdx === -1 ? 'Missing required column: Product Name' : 'Missing Product Name');
+      }
 
       // If tax is not there, allow and store with default/zero rate
       const effectiveRate = !isNaN(rawRate)
@@ -801,21 +789,154 @@ export const Products: React.FC = () => {
     return parsed;
   };
 
+  // Robust CSV Parser
+  const parseCSVText = (text: string) => {
+    const lines = text.split(/\r\n|\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return [];
+
+    const parseRow = (line: string): string[] => {
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    const rows = lines.map(parseRow);
+    return processImportTable(rows);
+  };
+
+  // XLSX Worksheet Parser
+  const parseXLSXBuffer = (buffer: ArrayBuffer) => {
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
+      return [];
+    }
+    const worksheet = workbook.Sheets[firstSheetName];
+    if (!worksheet) {
+      return [];
+    }
+    const rawData = XLSX.utils.sheet_to_json<any[]>(worksheet, {
+      header: 1,
+      defval: '',
+      blankrows: false,
+    });
+    if (!rawData || rawData.length === 0) {
+      return [];
+    }
+    const rows: string[][] = rawData
+      .map((row) =>
+        Array.isArray(row)
+          ? row.map((cell) => (cell !== null && cell !== undefined ? String(cell).trim() : ''))
+          : []
+      )
+      .filter((row) => row.some((cell) => cell.length > 0));
+
+    return processImportTable(rows);
+  };
+
   const handleFileSelect = (file: File) => {
-    if (!file || !file.name.toLowerCase().endsWith('.csv')) {
-      alert('Please upload a valid .csv file format.');
+    if (!file) return;
+
+    const lowerName = file.name.toLowerCase();
+    const isCSV = lowerName.endsWith('.csv');
+    const isXLSX = lowerName.endsWith('.xlsx');
+
+    if (!isCSV && !isXLSX) {
+      setImportToast({
+        type: 'error',
+        message: 'Please upload a CSV or XLSX file.',
+      });
+      alert('Please upload a CSV or XLSX file.');
       return;
     }
+
     setImportFile(file);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      if (text) {
-        const parsed = parseCSVText(text);
-        setParsedProducts(parsed);
-      }
-    };
-    reader.readAsText(file);
+
+    if (isCSV) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        if (text) {
+          const parsed = parseCSVText(text);
+          if (parsed.length === 0) {
+            setImportToast({
+              type: 'error',
+              message: 'The uploaded CSV file is empty or contains no data rows.',
+            });
+          }
+          setParsedProducts(parsed);
+        } else {
+          setImportToast({
+            type: 'error',
+            message: 'The uploaded CSV file is empty.',
+          });
+          setParsedProducts([]);
+        }
+      };
+      reader.onerror = () => {
+        setImportToast({
+          type: 'error',
+          message: 'Failed to read the CSV file.',
+        });
+        setParsedProducts([]);
+      };
+      reader.readAsText(file);
+    } else if (isXLSX) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const arrayBuffer = event.target?.result as ArrayBuffer;
+          if (arrayBuffer) {
+            const parsed = parseXLSXBuffer(arrayBuffer);
+            if (parsed.length === 0) {
+              setImportToast({
+                type: 'error',
+                message: 'The uploaded XLSX sheet is empty or contains no data rows.',
+              });
+            }
+            setParsedProducts(parsed);
+          } else {
+            setImportToast({
+              type: 'error',
+              message: 'The uploaded XLSX file is empty.',
+            });
+            setParsedProducts([]);
+          }
+        } catch (err: any) {
+          setImportToast({
+            type: 'error',
+            message: 'Failed to parse the XLSX file: ' + (err.message || 'Invalid format'),
+          });
+          setParsedProducts([]);
+        }
+      };
+      reader.onerror = () => {
+        setImportToast({
+          type: 'error',
+          message: 'Failed to read the XLSX file.',
+        });
+        setParsedProducts([]);
+      };
+      reader.readAsArrayBuffer(file);
+    }
   };
 
   const validParsedProducts = parsedProducts.filter((p) => p.isValid);
@@ -859,7 +980,7 @@ export const Products: React.FC = () => {
     } catch (err: any) {
       setImportToast({
         type: 'error',
-        message: err.message || 'Failed to import CSV products.',
+        message: err.message || 'Failed to import products.',
       });
     } finally {
       setIsImporting(false);
@@ -930,10 +1051,11 @@ export const Products: React.FC = () => {
             onClick={() => {
               setImportFile(null);
               setParsedProducts([]);
+              setImportToast(null);
               setIsImportModalOpen(true);
             }}
             className="flex items-center gap-1.5 rounded-lg bg-white dark:bg-[#161b26] border border-slate-200 dark:border-[#262c3a] hover:bg-slate-50 dark:hover:bg-[#1f2636] px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-[#a8abb4] hover:text-slate-900 dark:hover:text-white transition-colors shadow-subtle whitespace-nowrap"
-            title="Import products from CSV file"
+            title="Import products from CSV or XLSX file"
           >
             <Upload className="h-3.5 w-3.5 text-emerald-600 dark:text-[#5dcaa5]" />
             <span>Import</span>
@@ -2009,16 +2131,17 @@ export const Products: React.FC = () => {
         </form>
       </Modal>
 
-      {/* CSV Import Modal */}
+      {/* Import Modal */}
       <Modal
         isOpen={isImportModalOpen}
         onClose={() => {
           setIsImportModalOpen(false);
           setImportFile(null);
           setParsedProducts([]);
+          setImportToast(null);
         }}
-        title="Import Products & SKUs from CSV"
-        subtitle="Batch upload product catalog records directly into your workspace"
+        title="Import Products & SKUs"
+        subtitle="Batch upload product catalog records directly into your workspace from CSV or XLSX"
         maxWidth="3xl"
         footer={
           <div className="flex items-center justify-between w-full">
@@ -2028,6 +2151,7 @@ export const Products: React.FC = () => {
                 setIsImportModalOpen(false);
                 setImportFile(null);
                 setParsedProducts([]);
+                setImportToast(null);
               }}
               className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
@@ -2056,6 +2180,32 @@ export const Products: React.FC = () => {
         }
       >
         <div className="space-y-4">
+          {importToast && (
+            <div
+              className={`flex items-center justify-between p-3 rounded-xl text-xs font-semibold ${
+                importToast.type === 'error'
+                  ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                  : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {importToast.type === 'error' ? (
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
+                ) : (
+                  <Check className="h-4 w-4 shrink-0 text-emerald-500" />
+                )}
+                <span>{importToast.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportToast(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Helpful Template Banner */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-900/50">
             <div className="flex items-start gap-2.5 min-w-0">
@@ -2103,7 +2253,7 @@ export const Products: React.FC = () => {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv"
+                accept=".csv, .xlsx, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/csv"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -2116,10 +2266,10 @@ export const Products: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                    Click to browse or drag & drop CSV file
+                    Click to browse or drag & drop CSV or XLSX file
                   </span>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Standard comma-delimited spreadsheet (.csv)
+                    Upload CSV or XLSX file
                   </p>
                 </div>
               </div>
@@ -2130,7 +2280,7 @@ export const Products: React.FC = () => {
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
-                    CSV
+                    {importFile.name.toLowerCase().endsWith('.xlsx') ? 'XLSX' : 'CSV'}
                   </div>
                   <div className="min-w-0">
                     <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
@@ -2147,6 +2297,7 @@ export const Products: React.FC = () => {
                   onClick={() => {
                     setImportFile(null);
                     setParsedProducts([]);
+                    setImportToast(null);
                     if (fileInputRef.current) fileInputRef.current.value = '';
                   }}
                   className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 transition-colors shrink-0"
