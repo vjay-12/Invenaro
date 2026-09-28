@@ -1816,7 +1816,7 @@ export const Products: React.FC = () => {
         onClose={() => setIsAddModalOpen(false)}
         title="Add New SKU to Master Catalog"
         subtitle="Registers new product item with immutable ledger hooks & custom schema fields"
-        maxWidth="2xl"
+        maxWidth="3xl"
       >
         <form onSubmit={handleCreateProduct} className="space-y-4">
           {addModalError && (
@@ -1825,8 +1825,10 @@ export const Products: React.FC = () => {
               <span>{addModalError}</span>
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
+
+          {/* Row 1: SKU & Product Title */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="min-w-0">
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 SKU Identifier *
               </label>
@@ -1836,10 +1838,10 @@ export const Products: React.FC = () => {
                 value={newSku}
                 onChange={(e) => setNewSku(e.target.value)}
                 placeholder="e.g. SKU-WIR-MOU-01"
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono uppercase focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono uppercase text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-teal-500 focus:outline-none"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Product Title *
               </label>
@@ -1849,15 +1851,17 @@ export const Products: React.FC = () => {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g. Precision Wireless Mouse"
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-teal-500 focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+          {/* Row 2: Category, UOM & Barcode */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5">
+            {/* Category */}
+            <div className="sm:col-span-5 min-w-0">
+              <div className="flex items-center justify-between mb-1.5 h-5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
                   Category *
                 </label>
                 {!isAddingCategory ? (
@@ -1867,22 +1871,22 @@ export const Products: React.FC = () => {
                       setIsAddingCategory(true);
                       setCustomCategoryInput('');
                     }}
-                    className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                    className="text-[11px] font-medium text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-0.5 shrink-0 ml-1"
                   >
-                    + Add New Category
+                    + Add Category
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setIsAddingCategory(false)}
-                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0 ml-1"
                   >
                     Cancel
                   </button>
                 )}
               </div>
               {isAddingCategory ? (
-                <div className="flex gap-1.5">
+                <div className="flex items-center gap-1.5 w-full min-w-0">
                   <input
                     type="text"
                     autoFocus
@@ -1897,12 +1901,12 @@ export const Products: React.FC = () => {
                         setIsAddingCategory(false);
                       }
                     }}
-                    className="flex-1 rounded-xl border border-indigo-400 dark:border-indigo-500 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="flex-1 min-w-0 h-9 rounded-xl border border-teal-500/50 dark:border-teal-500/60 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-500"
                   />
                   <button
                     type="button"
                     onClick={handleAddNewCategory}
-                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold"
+                    className="h-9 px-3.5 bg-teal-600 hover:bg-teal-500 dark:bg-[#5dcaa5] dark:hover:bg-[#4eb995] text-white dark:text-[#04342c] rounded-xl text-xs font-semibold shrink-0 transition-colors shadow-sm flex items-center justify-center"
                   >
                     Add
                   </button>
@@ -1913,13 +1917,15 @@ export const Products: React.FC = () => {
                   value={newCategory}
                   onChange={setNewCategory}
                   placeholder="Select Category"
+                  buttonClassName="h-9"
                 />
               )}
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+            {/* Unit of Measure */}
+            <div className="sm:col-span-4 min-w-0">
+              <div className="flex items-center justify-between mb-1.5 h-5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
                   Unit of Measure (UOM) *
                 </label>
                 {!isAddingUom ? (
@@ -1929,22 +1935,22 @@ export const Products: React.FC = () => {
                       setIsAddingUom(true);
                       setCustomUomInput('');
                     }}
-                    className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                    className="text-[11px] font-medium text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-0.5 shrink-0 ml-1"
                   >
-                    + Add New UOM
+                    + Add UOM
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setIsAddingUom(false)}
-                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0 ml-1"
                   >
                     Cancel
                   </button>
                 )}
               </div>
               {isAddingUom ? (
-                <div className="flex gap-1.5">
+                <div className="flex items-center gap-1.5 w-full min-w-0">
                   <input
                     type="text"
                     autoFocus
@@ -1959,12 +1965,12 @@ export const Products: React.FC = () => {
                         setIsAddingUom(false);
                       }
                     }}
-                    className="flex-1 rounded-xl border border-indigo-400 dark:border-indigo-500 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="flex-1 min-w-0 h-9 rounded-xl border border-teal-500/50 dark:border-teal-500/60 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-500"
                   />
                   <button
                     type="button"
                     onClick={handleAddNewUom}
-                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold"
+                    className="h-9 px-3.5 bg-teal-600 hover:bg-teal-500 dark:bg-[#5dcaa5] dark:hover:bg-[#4eb995] text-white dark:text-[#04342c] rounded-xl text-xs font-semibold shrink-0 transition-colors shadow-sm flex items-center justify-center"
                   >
                     Add
                   </button>
@@ -1975,55 +1981,66 @@ export const Products: React.FC = () => {
                   value={newUom}
                   onChange={setNewUom}
                   placeholder="Select UOM"
+                  buttonClassName="h-9"
                 />
               )}
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Barcode Value
-              </label>
+            {/* Barcode Value */}
+            <div className="sm:col-span-3 min-w-0">
+              <div className="flex items-center mb-1.5 h-5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                  Barcode Value
+                </label>
+              </div>
               <input
                 type="text"
                 value={newBarcode}
                 onChange={(e) => setNewBarcode(e.target.value)}
-                placeholder="Auto-generated if blank"
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                placeholder="Auto-generated"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-teal-500 focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Cost Price ({currency})
-              </label>
+          {/* Row 3: Pricing & Inventory Thresholds */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="min-w-0 flex flex-col justify-end">
+              <div className="h-8 flex items-end pb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-tight">
+                  Cost Price ({currency}) *
+                </label>
+              </div>
               <input
                 type="number"
                 step="0.01"
                 min="0"
                 value={newCostPrice}
                 onChange={(e) => setNewCostPrice(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Sell Price ({currency})
-              </label>
+            <div className="min-w-0 flex flex-col justify-end">
+              <div className="h-8 flex items-end pb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-tight">
+                  Sell Price ({currency}) *
+                </label>
+              </div>
               <input
                 type="number"
                 step="0.01"
                 min="0"
                 value={newSellPrice}
                 onChange={(e) => setNewSellPrice(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Opening / Available Stock
-              </label>
+            <div className="min-w-0 flex flex-col justify-end">
+              <div className="h-8 flex items-end pb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-tight">
+                  Opening Stock
+                </label>
+              </div>
               <input
                 type="number"
                 step="any"
@@ -2031,26 +2048,30 @@ export const Products: React.FC = () => {
                 value={newOpeningStock}
                 onChange={(e) => setNewOpeningStock(e.target.value)}
                 placeholder="0"
-                className="w-full rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/30 dark:bg-indigo-950/20 px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-teal-500/30 dark:border-teal-500/40 bg-teal-50/20 dark:bg-teal-950/20 px-3 py-2 text-xs font-mono font-semibold text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Min Reorder Level
-              </label>
+            <div className="min-w-0 flex flex-col justify-end">
+              <div className="h-8 flex items-end pb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-tight">
+                  Min Reorder Level
+                </label>
+              </div>
               <input
                 type="number"
                 step="any"
                 min="0"
                 value={newReorderPoint}
                 onChange={(e) => setNewReorderPoint(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Max Stock Level
-              </label>
+            <div className="min-w-0 flex flex-col justify-end col-span-2 sm:col-span-1">
+              <div className="h-8 flex items-end pb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-tight">
+                  Max Stock Level
+                </label>
+              </div>
               <input
                 type="number"
                 step="any"
@@ -2058,7 +2079,7 @@ export const Products: React.FC = () => {
                 value={newMaxStock}
                 onChange={(e) => setNewMaxStock(e.target.value)}
                 placeholder="e.g. 100"
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
               />
             </div>
           </div>
@@ -2170,7 +2191,7 @@ export const Products: React.FC = () => {
         }}
         title="Edit SKU & Tax Classification"
         subtitle={`Update product pricing, inventory thresholds, and ${taxConfig.sectionTitle}`}
-        maxWidth="2xl"
+        maxWidth="3xl"
       >
         <form onSubmit={handleUpdateProduct} className="space-y-4">
           {editModalError && (
@@ -2180,8 +2201,9 @@ export const Products: React.FC = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
+          {/* Row 1: SKU & Product Title */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="min-w-0">
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 SKU Identifier
               </label>
@@ -2189,10 +2211,10 @@ export const Products: React.FC = () => {
                 type="text"
                 disabled
                 value={editSku}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 px-3 py-2 text-xs font-mono text-slate-500 cursor-not-allowed"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 px-3 py-2 text-xs font-mono text-slate-500 cursor-not-allowed"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Product Title *
               </label>
@@ -2201,14 +2223,15 @@ export const Products: React.FC = () => {
                 required
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+          {/* Row 2: Category, UOM & Barcode */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5">
+            <div className="sm:col-span-5 min-w-0">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 h-5 flex items-center">
                 Category
               </label>
               <SimpleSelectDropdown
@@ -2216,10 +2239,11 @@ export const Products: React.FC = () => {
                 value={editCategory}
                 onChange={setEditCategory}
                 placeholder="Select Category"
+                buttonClassName="h-9"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            <div className="sm:col-span-4 min-w-0">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 h-5 flex items-center">
                 Unit of Measure (UOM)
               </label>
               <SimpleSelectDropdown
@@ -2227,66 +2251,77 @@ export const Products: React.FC = () => {
                 value={editUom}
                 onChange={setEditUom}
                 placeholder="Select UOM"
+                buttonClassName="h-9"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            <div className="sm:col-span-3 min-w-0">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 h-5 flex items-center">
                 Barcode Value
               </label>
               <input
                 type="text"
                 value={editBarcode}
                 onChange={(e) => setEditBarcode(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                placeholder="Auto-generated"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-teal-500 focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Cost Price ({currency})
-              </label>
+          {/* Row 3: Pricing & Inventory Thresholds */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="min-w-0 flex flex-col justify-end">
+              <div className="h-8 flex items-end pb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-tight">
+                  Cost Price ({currency})
+                </label>
+              </div>
               <input
                 type="number"
                 step="0.01"
                 value={editCostPrice}
                 onChange={(e) => setEditCostPrice(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Sell Price ({currency})
-              </label>
+            <div className="min-w-0 flex flex-col justify-end">
+              <div className="h-8 flex items-end pb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-tight">
+                  Sell Price ({currency})
+                </label>
+              </div>
               <input
                 type="number"
                 step="0.01"
                 value={editSellPrice}
                 onChange={(e) => setEditSellPrice(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Min Reorder Level
-              </label>
+            <div className="min-w-0 flex flex-col justify-end">
+              <div className="h-8 flex items-end pb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-tight">
+                  Min Reorder Level
+                </label>
+              </div>
               <input
                 type="number"
                 value={editReorderPoint}
                 onChange={(e) => setEditReorderPoint(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Max Stock Level
-              </label>
+            <div className="min-w-0 flex flex-col justify-end">
+              <div className="h-8 flex items-end pb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-tight">
+                  Max Stock Level
+                </label>
+              </div>
               <input
                 type="number"
                 value={editMaxStock}
                 onChange={(e) => setEditMaxStock(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
               />
             </div>
           </div>
