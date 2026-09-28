@@ -62,6 +62,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }, 0);
   }, [activeProducts, selectedLocationId]);
 
+  // Total units across active inventory
+  const totalUnits = React.useMemo(() => {
+    return activeProducts.reduce((sum, p) => {
+      const qty =
+        selectedLocationId === 'all'
+          ? p.currentStock
+          : p.locationStock[selectedLocationId] || 0;
+      return sum + qty;
+    }, 0);
+  }, [activeProducts, selectedLocationId]);
+
   // Low stock items: 0 < currentStock <= reorderPoint
   const lowStockItems = React.useMemo(() => {
     return activeProducts.filter((p) => {
@@ -326,7 +337,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             {formatCurrency(totalValuation)}
           </div>
           <div className="text-[11px] font-medium text-emerald-600 dark:text-[#5dcaa5] mt-1 flex items-center gap-1">
-            <span>{activeProducts.length > 0 ? `${activeProducts.length} SKUs in inventory` : 'No inventory value'}</span>
+            <span>{activeProducts.length > 0 ? `${totalUnits.toLocaleString()} units (${activeProducts.length} SKUs)` : 'No inventory value'}</span>
           </div>
         </div>
 
@@ -338,8 +349,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           <div className="text-lg sm:text-xl font-bold text-slate-900 dark:text-[#e8e8e4]">
             {activeProducts.length}
           </div>
-          <div className="text-[11px] text-slate-500 dark:text-[#7a7d87] mt-1">
-            Active catalog variants
+          <div className="text-[11px] text-slate-500 dark:text-[#7a7d87] mt-1 font-mono">
+            {totalUnits.toLocaleString()} total units on hand
           </div>
         </div>
 
@@ -380,16 +391,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <h2 className="text-xs sm:text-[13px] font-semibold text-slate-900 dark:text-[#e8e8e4]">
                   Stock Movement Velocity
                 </h2>
-                <span className="text-[10px] font-medium text-slate-500 dark:text-[#7a7d87] bg-slate-100 dark:bg-[#1e2330] px-2 py-0.5 rounded">
-                  7 days
+                <span className="text-[10px] font-medium text-slate-500 dark:text-[#7a7d87] bg-slate-100 dark:bg-[#1e2330] px-2 py-0.5 rounded" title="Flow volume in last 7 days">
+                  7-Day Flow
                 </span>
               </div>
               <div className="flex items-center gap-2 font-mono text-[11px]">
-                <span className="text-emerald-600 dark:text-[#5dcaa5]">
+                <span className="text-emerald-600 dark:text-[#5dcaa5]" title="Total stock received in last 7 days">
                   IN: +{velocitySummary.totalIn}
                 </span>
                 <span className="text-slate-300 dark:text-[#1e2330]">•</span>
-                <span className="text-rose-500 dark:text-[#f0997b]">
+                <span className="text-rose-500 dark:text-[#f0997b]" title="Total stock delivered in last 7 days">
                   OUT: -{velocitySummary.totalOut}
                 </span>
               </div>

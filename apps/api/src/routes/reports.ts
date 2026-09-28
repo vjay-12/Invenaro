@@ -39,15 +39,18 @@ router.get('/dashboard', async (req, res): Promise<void> => {
     // Valuation & low stock
     let totalStockUnits = 0;
     let totalStockValue = 0;
+    let outOfStockCount = 0;
     const lowStockItems: any[] = [];
 
     balances.forEach((b) => {
       const qty = Number(b.current_quantity);
-      const cost = Number(b.avg_cost);
+      const cost = Number(b.product.purchase_price ?? b.avg_cost ?? 0);
       totalStockUnits += qty;
       totalStockValue += qty * cost;
 
-      if (qty <= Number(b.product.min_stock_level)) {
+      if (qty <= 0) {
+        outOfStockCount++;
+      } else if (qty <= Number(b.product.min_stock_level)) {
         lowStockItems.push({
           product_id: b.product.id,
           name: b.product.name,
@@ -65,8 +68,9 @@ router.get('/dashboard', async (req, res): Promise<void> => {
         totalOrders,
         totalCustomers,
         totalStockUnits,
-        totalStockValue,
+        totalStockValue: Number(totalStockValue.toFixed(2)),
         lowStockCount: lowStockItems.length,
+        outOfStockCount,
       },
       lowStockItems: lowStockItems.slice(0, 10),
       recentOrders: recentOrders.map((o) => ({

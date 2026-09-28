@@ -37,6 +37,9 @@ router.get('/', async (req, res): Promise<void> => {
       const locStock: Record<string, number> = {};
       for (const b of p.stock_balances) {
         locStock[b.godown_id] = Number(b.current_quantity);
+        if (b.godown?.code) {
+          locStock[b.godown.code] = Number(b.current_quantity);
+        }
       }
 
       return {
