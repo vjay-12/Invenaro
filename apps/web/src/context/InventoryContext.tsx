@@ -67,15 +67,15 @@ const getInitialTenantId = (): string => {
     const raw = localStorage.getItem('invenza_user');
     if (raw) {
       const u = JSON.parse(raw);
-      return u.tenantId || u.tenant_id || '';
+      return u.tenantId || u.tenant_id || 'invenaro_main';
     }
   } catch {}
-  return '';
+  return 'invenaro_main';
 };
 
 const getInitialTenantData = <T,>(keySuffix: string, fallback: T): T => {
   const tid = getInitialTenantId();
-  if (!tid || tid === 'default' || tid === 'loading') return fallback;
+  if (!tid) return fallback;
   try {
     const saved = localStorage.getItem(`invenza_tenant_${tid}_${keySuffix}`);
     if (saved) {
@@ -90,8 +90,7 @@ const InventoryContext = createContext<InventoryContextType | undefined>(undefin
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading: authIsLoading, currencyCode, countryCode, taxType, taxRate, taxLabel, taxConfig } = useAuth();
-  // Use real tenantId from user or synchronously from localStorage; only fall back to 'loading'/'default' if unresolved
-  const currentTenantId = user?.tenantId || getInitialTenantId() || (authIsLoading ? 'loading' : 'default');
+  const currentTenantId = user?.tenantId || getInitialTenantId() || 'invenaro_main';
 
   const isLoadedRef = useRef(false);
   const loadedTenantIdRef = useRef<string | null>(null);
@@ -193,10 +192,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Sync all operational entities authoritatively from PostgreSQL backend
   const syncBackend = useCallback(async (forcedTenantId?: string) => {
     const token = localStorage.getItem('invenza_token');
-    const targetTenantId = forcedTenantId || user?.tenantId || getInitialTenantId() || currentTenantId;
-    if (!token || !targetTenantId || targetTenantId === 'default' || targetTenantId === 'loading') {
+    const targetTenantId = forcedTenantId || user?.tenantId || getInitialTenantId() || currentTenantId || 'invenaro_main';
+    if (!token) {
       isLoadedRef.current = true;
-      loadedTenantIdRef.current = targetTenantId || 'default';
+      loadedTenantIdRef.current = targetTenantId;
       return;
     }
     const syncingForTenantId = targetTenantId;
@@ -468,8 +467,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Load tenant-isolated state and initial sync
   useEffect(() => {
-    const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId;
-    if (!activeTid || activeTid === 'loading' || activeTid === 'default') return;
+    const token = localStorage.getItem('invenza_token');
+    if (!token) return;
+
+    const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId || 'invenaro_main';
 
     if (loadedTenantIdRef.current !== activeTid) {
       const pKey = `invenza_tenant_${activeTid}_products`;
@@ -559,8 +560,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     if (
       !currentTenantId ||
-      currentTenantId === 'default' ||
-      currentTenantId === 'loading' ||
       !isLoadedRef.current ||
       !isSyncedRef.current ||
       loadedTenantIdRef.current !== currentTenantId

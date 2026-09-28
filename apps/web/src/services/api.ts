@@ -18,10 +18,10 @@ export function getActiveTenantId(): string | null {
     const userStr = localStorage.getItem('invenza_user');
     if (userStr) {
       const u = JSON.parse(userStr);
-      return u.tenantId || u.tenant_id || null;
+      return u.tenantId || u.tenant_id || 'invenaro_main';
     }
   } catch {}
-  return null;
+  return 'invenaro_main';
 }
 
 export async function fetchWithFallback<T>(url: string, options?: RequestInit): Promise<T | null> {

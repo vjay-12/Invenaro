@@ -82,7 +82,13 @@ export const Products: React.FC = () => {
     deleteProducts,
     bulkAdjustStock,
     taxConfig,
+    refreshData,
   } = useInventory();
+
+  // Explicit mount sync ensures database products are authoritatively loaded on direct navigation and page refresh
+  useEffect(() => {
+    refreshData?.();
+  }, [refreshData]);
   const license = useLicense();
   const isMultiGodown = license.hasModule('multi_godown');
 

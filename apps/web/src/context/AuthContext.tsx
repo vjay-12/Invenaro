@@ -72,6 +72,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const parsed: AuthUser = JSON.parse(savedUser);
       if (parsed) {
+        if (!parsed.tenantId) {
+          parsed.tenantId = 'invenaro_main';
+        }
         if (parsed.currencyCode === 'EUR') {
           if (!parsed.countryCode || parsed.countryCode === 'IN') parsed.countryCode = 'DE';
           parsed.taxType = 'VAT';
@@ -154,7 +157,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: userData.email,
               fullName: userData.name || userData.full_name || user?.fullName || 'User',
               role: userData.role || user?.role || 'staff',
-              tenantId: userData.tenant_id || user?.tenantId,
+              tenantId: userData.tenant_id || user?.tenantId || 'invenaro_main',
               companyName: profile?.company_name || userData.company_name || user?.companyName,
               industry: profile?.industry || userData.industry || user?.industry,
               currencyCode: cur || cfg.currencyCode,
@@ -207,11 +210,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const cfg = getTaxConfig(country, state, data.tax_rate, cur, engine);
 
       const authUser: AuthUser = {
-        id: data.tenant_id || 'usr-01',
+        id: data.user?.id || data.tenant_id || 'usr-01',
         email: email.trim().toLowerCase(),
-        fullName: data.full_name || 'User',
-        role: data.user_role || 'staff',
-        tenantId: data.tenant_id,
+        fullName: data.user?.name || data.full_name || 'User',
+        role: data.user?.role || data.user_role || 'staff',
+        tenantId: data.tenant_id || data.user?.tenant_id || 'invenaro_main',
         companyName: data.company_name || (data.user_role === 'super_admin' ? 'Master Platform' : 'Company Workspace'),
         industry: data.industry || 'General',
         currencyCode: cur || cfg.currencyCode,
@@ -255,7 +258,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: setupData.email.trim().toLowerCase(),
         fullName: data.user?.name || data.full_name || setupData.name,
         role: 'admin',
-        tenantId: data.tenant_id,
+        tenantId: data.tenant_id || data.user?.tenant_id || 'invenaro_main',
         companyName: data.company_name || 'Invenaro Operations',
         industry: 'General',
         currencyCode: cur,

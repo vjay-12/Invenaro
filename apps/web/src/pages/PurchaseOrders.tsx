@@ -28,7 +28,12 @@ export const PurchaseOrders: React.FC = () => {
     formatCurrency,
     createPurchaseOrder,
     receiveGoods,
+    refreshData,
   } = useInventory();
+
+  useEffect(() => {
+    refreshData?.();
+  }, [refreshData]);
   const license = useLicense();
   const isMultiGodown = license.hasModule('multi_godown');
 
