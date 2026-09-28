@@ -48,7 +48,11 @@ interface InventoryContextType {
   clearAllProducts: (options?: { performedBy?: string; password?: string; otp?: string }) => Promise<void>;
   clearLedger: (options?: { requestedBy?: string; approvedBy?: string }) => Promise<void>;
   createPurchaseOrder: (po: Omit<PurchaseOrder, 'id' | 'poNumber' | 'status'>) => Promise<void>;
-  receiveGoods: (poId: string, receivedNotes?: string) => void;
+  receiveGoods: (
+    poId: string,
+    receivedNotes?: string,
+    receivedItems?: Array<{ product_id: string; quantity: number }>
+  ) => Promise<void>;
   createSalesOrder: (so: Omit<SalesOrder, 'id' | 'soNumber' | 'status'>) => void;
   fulfillSalesOrder: (
     soId: string
@@ -336,7 +340,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 id: bpo.id,
                 poNumber: bpo.po_number,
                 supplierName: bpo.supplier_name,
-                status: bpo.status === 'completed' || bpo.status === 'RECEIVED' ? 'received' : bpo.status || 'pending',
+                status: bpo.status === 'completed' || bpo.status === 'RECEIVED' || bpo.status === 'received'
+                  ? 'received'
+                  : bpo.status === 'cancelled' || bpo.status === 'CANCELLED'
+                  ? 'cancelled'
+                  : bpo.status === 'draft' || bpo.status === 'DRAFT'
+                  ? 'draft'
+                  : 'pending',
                 targetLocationId: bpo.target_location_id || bpo.godown_id,
                 targetLocationName: bpo.target_location_name || bpo.godown?.name || 'Main Fulfillment Center',
                 totalAmount: Number(bpo.total_amount ?? bpo.grand_total ?? 0),
@@ -963,7 +973,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     try {
       const locUuid = resolveLocationUuid(data.targetLocationId);
-      await api.createPurchaseOrder({
+      const res = await api.createPurchaseOrder({
         supplier_name: data.supplierName,
         godown_id: locUuid,
         target_location_id: locUuid,
@@ -981,26 +991,68 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           };
         }),
       });
-      const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId;
-      await syncBackend(activeTid);
+
+      if (res && res.id) {
+        const mappedCreatedPO: PurchaseOrder = {
+          id: res.id,
+          poNumber: res.po_number || newPO.poNumber,
+          supplierName: res.supplier_name || data.supplierName,
+          status: 'pending',
+          targetLocationId: res.godown_id || data.targetLocationId,
+          targetLocationName: res.godown?.name || data.targetLocationName,
+          totalAmount: Number(res.grand_total ?? res.total_amount ?? data.totalAmount),
+          orderDate: res.order_date ? res.order_date.split('T')[0] : data.orderDate,
+          receivedDate: res.received_date ? res.received_date.split('T')[0] : undefined,
+          notes: res.notes || data.notes || '',
+          items: (res.items || []).map((it: any) => ({
+            productId: it.product_id,
+            sku: it.product?.sku || it.sku || 'SKU',
+            name: it.product?.name || it.product_name || 'Item',
+            orderedQty: Number(it.quantity ?? it.ordered_qty ?? 0),
+            receivedQty: Number(it.received_qty || 0),
+            unitCost: Number(it.unit_cost || 0),
+          })),
+        };
+        setPurchaseOrders(prev => prev.map(p => p.id === newPO.id ? mappedCreatedPO : p));
+      }
     } catch (err) {
       console.warn('Backend PO creation warning:', err);
+      setPurchaseOrders(prev => prev.filter(p => p.id !== newPO.id));
       throw err;
     }
   };
 
   // Receive Goods (GRN Flow) -> auto writes to immutable ledger!
-  const receiveGoods = async (poId: string, receivedNotes?: string) => {
+  const receiveGoods = async (
+    poId: string,
+    receivedNotes?: string,
+    receivedItems?: Array<{ product_id: string; quantity: number }>
+  ) => {
     const po = purchaseOrders.find(p => p.id === poId);
     if (!po || po.status === 'received') return;
+
+    const qtyMap: Record<string, number> = {};
+    if (Array.isArray(receivedItems)) {
+      for (const item of receivedItems) {
+        if (item.product_id) {
+          qtyMap[item.product_id] = item.quantity;
+        }
+      }
+    }
 
     const newMovements: StockMovement[] = [];
     let updatedProds = [...products];
 
     po.items.forEach(item => {
+      const qtyToReceive = qtyMap[item.productId] !== undefined
+        ? Math.max(0, qtyMap[item.productId])
+        : item.orderedQty;
+
+      if (qtyToReceive <= 0) return;
+
       const prod = updatedProds.find(p => p.id === item.productId);
       const currentLocStock = prod?.locationStock[po.targetLocationId] || 0;
-      const runningBal = currentLocStock + item.orderedQty;
+      const runningBal = currentLocStock + qtyToReceive;
 
       const movement: StockMovement = {
         id: `mov-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1009,7 +1061,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         sku: item.sku,
         productName: item.name,
         movementType: 'IN',
-        quantity: item.orderedQty,
+        quantity: qtyToReceive,
         locationId: po.targetLocationId,
         locationName: po.targetLocationName,
         referenceType: 'PO',
@@ -1036,7 +1088,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               ...p,
               status: 'received',
               receivedDate: new Date().toISOString().split('T')[0],
-              items: p.items.map(it => ({ ...it, receivedQty: it.orderedQty })),
+              items: p.items.map(it => ({
+                ...it,
+                receivedQty: qtyMap[it.productId] !== undefined ? qtyMap[it.productId] : it.orderedQty,
+              })),
               notes: receivedNotes ? `${p.notes || ''} [Received: ${receivedNotes}]` : p.notes,
             }
           : p
@@ -1045,9 +1100,103 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     try {
       if (isValidUuid(poId)) {
-        await api.receiveGoodsGRN(poId, receivedNotes);
-        const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId;
-        await syncBackend(activeTid);
+        await api.receiveGoodsGRN(poId, receivedNotes, receivedItems);
+        // Targeted refresh of affected entities only (PO status, stock balances, ledger movements)
+        const [backendPOs, backendProds, backendMovs] = await Promise.allSettled([
+          api.getPurchaseOrders(),
+          api.getProducts(),
+          api.getMovements(),
+        ]);
+
+        if (backendPOs.status === 'fulfilled' && Array.isArray(backendPOs.value)) {
+          const mapped = backendPOs.value.map((bpo: any) => ({
+            id: bpo.id,
+            poNumber: bpo.po_number,
+            supplierName: bpo.supplier_name,
+            status: bpo.status === 'completed' || bpo.status === 'RECEIVED' || bpo.status === 'received'
+              ? 'received'
+              : bpo.status === 'cancelled' || bpo.status === 'CANCELLED'
+              ? 'cancelled'
+              : 'pending',
+            targetLocationId: bpo.target_location_id || bpo.godown_id,
+            targetLocationName: bpo.target_location_name || bpo.godown?.name || 'Main Fulfillment Center',
+            totalAmount: Number(bpo.total_amount ?? bpo.grand_total ?? 0),
+            orderDate: bpo.order_date ? bpo.order_date.split('T')[0] : '',
+            receivedDate: bpo.received_date ? bpo.received_date.split('T')[0] : undefined,
+            notes: bpo.notes || '',
+            items: (bpo.items || []).map((it: any) => ({
+              productId: it.product_id,
+              sku: it.sku || it.product?.sku || 'SKU',
+              name: it.product_name || it.product?.name || 'Item',
+              orderedQty: Number(it.ordered_qty ?? it.quantity ?? 0),
+              receivedQty: Number(it.received_qty || 0),
+              unitCost: Number(it.unit_cost || 0),
+            })),
+          }));
+          setPurchaseOrders(mapped as PurchaseOrder[]);
+        }
+
+        if (backendProds.status === 'fulfilled' && Array.isArray(backendProds.value)) {
+          const activeLocId = locations[0]?.id || 'WH-MAIN';
+          const movList = backendMovs.status === 'fulfilled' && Array.isArray(backendMovs.value)
+            ? backendMovs.value.map((bm: any) => ({
+                id: bm.id,
+                timestamp: bm.timestamp,
+                productId: bm.product_id,
+                sku: bm.sku || 'SKU',
+                productName: bm.product_name || 'Item',
+                movementType: bm.movement_type,
+                quantity: Number(bm.quantity),
+                locationId: bm.location_id,
+                locationName: bm.location_name || 'Main Fulfillment Center',
+                targetLocationId: bm.target_location_id,
+                targetLocationName: bm.target_location_name,
+                referenceType: bm.reference_type || 'INITIAL',
+                referenceId: bm.reference_id || 'OPENING-BALANCE',
+                reasonCode: bm.reason_code,
+                performedBy: bm.performed_by || 'Administrator',
+                unitCost: Number(bm.unit_cost || 0),
+                runningBalance: Number(bm.quantity || 0),
+              }))
+            : updatedLedger;
+
+          const mappedProds: Product[] = backendProds.value.map((bp: any) => {
+            const locStock = bp.location_stock || {};
+            const { currentStock, locationStock } = computeStock(
+              bp.id,
+              bp.sku,
+              movList,
+              Number(bp.current_stock || 0),
+              locStock,
+              activeLocId
+            );
+            return {
+              id: bp.id,
+              sku: bp.sku,
+              name: bp.name,
+              category: bp.category,
+              unitOfMeasure: bp.unit_of_measure,
+              costPrice: Number(bp.cost_price),
+              sellPrice: Number(bp.sell_price),
+              currency: bp.currency || 'INR',
+              barcode: bp.barcode || '',
+              reorderPoint: Number(bp.reorder_point),
+              maxStock: bp.max_stock !== undefined && bp.max_stock !== null ? Number(bp.max_stock) : undefined,
+              warehouseId: bp.warehouse_id || activeLocId,
+              hsnCode: bp.hsn_code || bp.tax_code || '',
+              taxCode: bp.tax_code || bp.hsn_code || '',
+              gstRate: bp.gst_rate !== undefined && bp.gst_rate !== null ? Number(bp.gst_rate) : 0,
+              taxRate: bp.tax_rate !== undefined && bp.tax_rate !== null ? Number(bp.tax_rate) : (Number(bp.gst_rate) || 0),
+              currentStock,
+              locationStock,
+              variantAttributes: bp.variant_attributes || {},
+              customFields: bp.custom_fields || {},
+              isActive: bp.is_active,
+              createdAt: bp.created_at,
+            };
+          });
+          setProducts(mappedProds);
+        }
       }
     } catch (err) {
       console.warn('Backend receive GRN warning:', err);
@@ -1108,8 +1257,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         };
         setSalesOrders(prev => [persistedSO, ...prev.filter(s => s.id !== newSO.id)]);
       }
-      const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId;
-      await syncBackend(activeTid);
     } catch (err) {
       // Roll back the optimistic SO — it was never saved to the DB.
       setSalesOrders(prev => prev.filter(s => s.id !== newSO.id));
@@ -1144,8 +1291,65 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             error: 'Failed to fulfill Sales Order: Invalid or empty response from server.',
           };
         }
-        const activeTid = user?.tenantId || getInitialTenantId() || currentTenantId;
-        await syncBackend(activeTid);
+
+        setSalesOrders(prev =>
+          prev.map(s =>
+            s.id === soId
+              ? {
+                  ...s,
+                  status: 'fulfilled',
+                  fulfilledDate: new Date().toISOString().split('T')[0],
+                  invoiceId: backendRes.invoice_id,
+                }
+              : s
+          )
+        );
+
+        // Targeted refresh of affected entities without blocking
+        Promise.allSettled([
+          api.getSalesOrders(),
+          api.getProducts(),
+          api.getMovements(),
+        ]).then(([updatedSOs]) => {
+          if (updatedSOs.status === 'fulfilled' && Array.isArray(updatedSOs.value)) {
+            setSalesOrders(updatedSOs.value.map((bso: any) => ({
+              id: bso.id,
+              soNumber: bso.so_number || bso.order_number,
+              customerName: bso.customer_name,
+              customerGstin: bso.customer_gstin,
+              billingAddress: bso.billing_address || bso.customer_address,
+              shippingAddress: bso.shipping_address || bso.customer_address,
+              state: bso.state,
+              stateCode: bso.state_code,
+              billingState: bso.billing_state,
+              billingStateCode: bso.billing_state_code,
+              shippingState: bso.shipping_state,
+              shippingStateCode: bso.shipping_state_code,
+              invoiceId: bso.invoice_id || (bso.invoices && bso.invoices[0]?.id) || undefined,
+              status: bso.status === 'completed' || bso.status === 'DELIVERED' ? 'fulfilled' : (bso.status === 'CONFIRMED' ? 'draft' : bso.status || 'pending'),
+              taxEnabled: bso.tax_enabled ?? true,
+              sourceLocationId: bso.source_location_id || bso.godown_id,
+              sourceLocationName: bso.source_location_name || bso.godown?.name || 'Main Fulfillment Center',
+              totalAmount: Number(bso.total_amount ?? bso.grand_total ?? 0),
+              orderDate: bso.order_date ? bso.order_date.split('T')[0] : '',
+              fulfilledDate: bso.fulfilled_date ? bso.fulfilled_date.split('T')[0] : undefined,
+              createdAt: bso.created_at || bso.order_date,
+              voidReason: bso.void_reason,
+              voidedAt: bso.voided_at,
+              notes: bso.notes || '',
+              items: (bso.items || []).map((it: any) => ({
+                productId: it.product_id,
+                sku: it.sku || it.product?.sku || 'SKU',
+                name: it.product_name || it.product?.name || 'Item',
+                orderedQty: Number(it.ordered_qty ?? it.quantity ?? 0),
+                fulfilledQty: Number(it.fulfilled_qty || (bso.status === 'DELIVERED' ? (it.ordered_qty ?? it.quantity ?? 0) : 0)),
+                unitPrice: Number(it.unit_price || 0),
+                discountPercent: Number(it.discount || 0),
+              })),
+            })));
+          }
+        });
+
         return {
           success: true,
           invoice_id: backendRes.invoice_id,

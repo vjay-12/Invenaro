@@ -270,6 +270,15 @@ const handleDispatchOrder = async (req: any, res: any): Promise<void> => {
     // Execute atomic dispatch in transaction
     const result = await prisma.$transaction(
       async (tx) => {
+        // Guard against race conditions and double-dispatching
+        const freshOrder = await tx.salesOrder.findUnique({
+          where: { id: order.id },
+        });
+
+        if (!freshOrder || freshOrder.status === 'DELIVERED') {
+          throw new Error('Sales order has already been dispatched');
+        }
+
         // 1. Update order status to DELIVERED
         const updatedOrder = await tx.salesOrder.update({
           where: { id: order.id },

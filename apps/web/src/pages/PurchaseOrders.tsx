@@ -115,6 +115,20 @@ export const PurchaseOrders: React.FC = () => {
   const calculateGrandTotal = () =>
     lineItems.reduce((acc, it) => acc + it.orderedQty * it.unitCost, 0);
 
+  const [isSubmittingPO, setIsSubmittingPO] = useState(false);
+  const [isReceivingGRN, setIsReceivingGRN] = useState(false);
+  const [receivedQtyMap, setReceivedQtyMap] = useState<Record<string, number>>({});
+
+  const handleOpenGRNModal = (po: PurchaseOrder) => {
+    setReceivingPO(po);
+    const initialMap: Record<string, number> = {};
+    po.items.forEach((it) => {
+      initialMap[it.productId] = it.orderedQty;
+    });
+    setReceivedQtyMap(initialMap);
+    setGrnNotes('');
+  };
+
   const handleSubmitPO = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supplierName.trim()) {
@@ -134,6 +148,7 @@ export const PurchaseOrders: React.FC = () => {
 
     const targetLoc = locations.find((l) => l.id === (resolvedLocationId || targetLocationId));
 
+    setIsSubmittingPO(true);
     try {
       await createPurchaseOrder({
         supplierName: supplierName.trim(),
@@ -149,16 +164,45 @@ export const PurchaseOrders: React.FC = () => {
       setSupplierName('');
       setPoNotes('');
       setTargetLocationId(selectedLocationId !== 'all' ? selectedLocationId : (locations[0]?.id || ''));
+      setLineItems([{ productId: products[0]?.id || '', sku: products[0]?.sku || '', name: products[0]?.name || '', orderedQty: 20, receivedQty: 0, unitCost: products[0]?.costPrice || 50 }]);
     } catch (err: any) {
       alert('Failed to create purchase order: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsSubmittingPO(false);
     }
   };
 
-  const handleConfirmGRN = () => {
+  const handleConfirmGRN = async () => {
     if (!receivingPO) return;
-    receiveGoods(receivingPO.id, grnNotes);
-    setReceivingPO(null);
-    setGrnNotes('');
+
+    for (const it of receivingPO.items) {
+      const val = receivedQtyMap[it.productId];
+      if (val === undefined || isNaN(val) || val <= 0) {
+        alert(`Please enter a valid received quantity for ${it.name} (must be greater than 0).`);
+        return;
+      }
+      if (val > it.orderedQty) {
+        alert(`Received quantity for ${it.name} (${val}) cannot exceed ordered quantity (${it.orderedQty}).`);
+        return;
+      }
+    }
+
+    const itemsPayload = receivingPO.items.map((it) => ({
+      product_id: it.productId,
+      quantity: Number(receivedQtyMap[it.productId] ?? it.orderedQty),
+    }));
+
+    setIsReceivingGRN(true);
+    try {
+      await receiveGoods(receivingPO.id, grnNotes, itemsPayload);
+      setReceivingPO(null);
+      setGrnNotes('');
+      setReceivedQtyMap({});
+    } catch (err: any) {
+      alert('Failed to process goods receipt: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsReceivingGRN(false);
+    }
   };
 
   const filteredPOs = purchaseOrders.filter((po) => {
@@ -331,10 +375,10 @@ export const PurchaseOrders: React.FC = () => {
                     )}
                   </td>
                   <td className="py-2.5 px-4 text-center">
-                    {po.status === 'pending' ? (
+                    {po.status !== 'received' ? (
                       <button
                         type="button"
-                        onClick={() => setReceivingPO(po)}
+                        onClick={() => handleOpenGRNModal(po)}
                         className="rounded-lg bg-emerald-700 hover:bg-emerald-800 px-3 py-1 text-xs font-bold text-white shadow-subtle transition-colors"
                       >
                         Receive Goods (GRN)
@@ -365,7 +409,9 @@ export const PurchaseOrders: React.FC = () => {
       {/* Receive Goods (GRN) Modal */}
       <Modal
         isOpen={Boolean(receivingPO)}
-        onClose={() => setReceivingPO(null)}
+        onClose={() => {
+          if (!isReceivingGRN) setReceivingPO(null);
+        }}
         title={`Process Goods Receipt Note (GRN): ${receivingPO?.poNumber}`}
         subtitle={`Receiving goods into ${receivingPO?.targetLocationName} automatically writes IN movements to ledger`}
         maxWidth="lg"
@@ -377,29 +423,66 @@ export const PurchaseOrders: React.FC = () => {
               transactions with unit cost stamps.
             </div>
 
+            {/* PO Summary Header */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 text-xs">
+              <div>
+                <span className="text-slate-400 block text-[10px] font-medium uppercase tracking-wider">Supplier</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{receivingPO.supplierName}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-medium uppercase tracking-wider">Destination Godown</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{receivingPO.targetLocationName}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-medium uppercase tracking-wider">Order Date</span>
+                <span className="font-mono text-slate-700 dark:text-slate-300">{receivingPO.orderDate || 'N/A'}</span>
+              </div>
+            </div>
+
             <div>
               <h4 className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                Items Being Received
+                Ordered Items & Received Quantities
               </h4>
-              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-800 p-2 bg-[#F4F5F8] dark:bg-[#0C1017]">
-                {receivingPO.items.map((it, idx) => (
-                  <div key={idx} className="flex items-center justify-between py-2 px-2 text-xs">
-                    <div>
-                      <div className="font-bold text-slate-800 dark:text-slate-200">{it.name}</div>
-                      <div className="font-mono text-[10px] text-teal-700 dark:text-teal-400">
-                        {it.sku}
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200 dark:border-slate-800 p-2 bg-[#F4F5F8] dark:bg-[#0C1017] space-y-2">
+                {receivingPO.items.map((it, idx) => {
+                  const currentQty = receivedQtyMap[it.productId] ?? it.orderedQty;
+                  const isInvalid = isNaN(currentQty) || currentQty <= 0 || currentQty > it.orderedQty;
+
+                  return (
+                    <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between py-2 px-2 text-xs gap-2">
+                      <div className="flex-1">
+                        <div className="font-bold text-slate-800 dark:text-slate-200">{it.name}</div>
+                        <div className="font-mono text-[10px] text-teal-700 dark:text-teal-400">
+                          {it.sku} &bull; Ordered: <span className="font-bold text-slate-700 dark:text-slate-300">{it.orderedQty} units</span> @ {formatCurrency(it.unitCost)}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          Received Qty:
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={it.orderedQty}
+                          value={currentQty}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            setReceivedQtyMap((prev) => ({
+                              ...prev,
+                              [it.productId]: isNaN(val) ? 0 : val,
+                            }));
+                          }}
+                          className={`w-20 rounded border px-2 py-1 text-right font-mono font-bold text-xs focus:outline-none focus:ring-1 ${
+                            isInvalid
+                              ? 'border-rose-400 bg-rose-50/50 text-rose-700 focus:ring-rose-500'
+                              : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-teal-600'
+                          }`}
+                        />
+                        <span className="text-[11px] text-slate-500">/ {it.orderedQty}</span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="font-mono font-bold text-slate-900 dark:text-white">
-                        {it.orderedQty} units
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-mono">
-                        @{formatCurrency(it.unitCost)} / unit
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -419,17 +502,26 @@ export const PurchaseOrders: React.FC = () => {
             <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
+                disabled={isReceivingGRN}
                 onClick={() => setReceivingPO(null)}
-                className="rounded-lg border border-slate-200 dark:border-slate-800 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="rounded-lg border border-slate-200 dark:border-slate-800 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
+                disabled={isReceivingGRN}
                 onClick={handleConfirmGRN}
-                className="rounded-lg bg-emerald-700 hover:bg-emerald-800 px-5 py-2 text-xs font-bold text-white shadow-subtle transition-colors"
+                className="rounded-lg bg-emerald-700 hover:bg-emerald-800 px-5 py-2 text-xs font-bold text-white shadow-subtle transition-colors disabled:opacity-50 flex items-center gap-1.5"
               >
-                Confirm Receipt & Post to Ledger
+                {isReceivingGRN ? (
+                  <>
+                    <IconClock className="h-3.5 w-3.5 animate-spin" />
+                    <span>Processing GRN...</span>
+                  </>
+                ) : (
+                  'Confirm Receipt & Post to Ledger'
+                )}
               </button>
             </div>
           </div>
@@ -625,16 +717,25 @@ export const PurchaseOrders: React.FC = () => {
           <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
+              disabled={isSubmittingPO}
               onClick={() => setIsCreateModalOpen(false)}
-              className="rounded-lg border border-slate-200 dark:border-slate-800 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="rounded-lg border border-slate-200 dark:border-slate-800 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-teal-700 hover:bg-teal-800 px-5 py-2 text-xs font-bold text-white shadow-subtle transition-colors"
+              disabled={isSubmittingPO}
+              className="rounded-lg bg-teal-700 hover:bg-teal-800 px-5 py-2 text-xs font-bold text-white shadow-subtle transition-colors disabled:opacity-50 flex items-center gap-1.5"
             >
-              Submit Order to Supplier
+              {isSubmittingPO ? (
+                <>
+                  <IconClock className="h-3.5 w-3.5 animate-spin" />
+                  <span>Submitting Order...</span>
+                </>
+              ) : (
+                'Submit Order to Supplier'
+              )}
             </button>
           </div>
         </form>

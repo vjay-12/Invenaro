@@ -112,6 +112,38 @@ router.post('/', async (req, res): Promise<void> => {
       poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 90)}`;
     }
 
+    // Performance Optimization: Batch resolve all products in a single database query
+    const productIds: string[] = [];
+    const skus: string[] = [];
+    const names: string[] = [];
+
+    for (const it of items) {
+      const itemAny = it as any;
+      if (it.product_id) productIds.push(it.product_id);
+      if (itemAny.sku) skus.push(itemAny.sku);
+      if (itemAny.name) names.push(itemAny.name);
+    }
+
+    const orConditions: any[] = [];
+    if (productIds.length > 0) orConditions.push({ id: { in: productIds } });
+    if (skus.length > 0) orConditions.push({ sku: { in: skus } });
+    if (names.length > 0) orConditions.push({ name: { in: names } });
+
+    const matchedProducts = orConditions.length > 0
+      ? await prisma.product.findMany({ where: { OR: orConditions } })
+      : [];
+
+    const prodById = new Map<string, any>();
+    const prodBySku = new Map<string, any>();
+    const prodByName = new Map<string, any>();
+    for (const p of matchedProducts) {
+      prodById.set(p.id, p);
+      prodBySku.set(p.sku.toLowerCase(), p);
+      prodByName.set(p.name.toLowerCase(), p);
+    }
+
+    let defaultFallbackProduct: any = null;
+
     let subtotal = 0;
     let taxTotal = 0;
 
@@ -119,29 +151,23 @@ router.post('/', async (req, res): Promise<void> => {
     for (const it of items) {
       let resolvedProdId = it.product_id;
       const itemAny = it as any;
-      let prod = await prisma.product.findUnique({ where: { id: resolvedProdId } }).catch(() => null);
+
+      let prod = prodById.get(resolvedProdId)
+        || (itemAny.sku ? prodBySku.get(String(itemAny.sku).toLowerCase()) : null)
+        || (resolvedProdId ? prodBySku.get(String(resolvedProdId).toLowerCase()) : null)
+        || (itemAny.name ? prodByName.get(String(itemAny.name).toLowerCase()) : null);
+
       if (!prod) {
-        prod = await prisma.product.findFirst({
-          where: {
-            OR: [
-              ...(itemAny.sku ? [{ sku: itemAny.sku }] : []),
-              ...(resolvedProdId ? [{ sku: resolvedProdId }] : []),
-              ...(itemAny.name ? [{ name: itemAny.name }] : []),
-            ],
-          },
-        });
+        if (!defaultFallbackProduct) {
+          defaultFallbackProduct = await prisma.product.findFirst({ where: { is_active: true } });
+        }
+        prod = defaultFallbackProduct;
       }
-      if (!prod && itemAny.name) {
-        prod = await prisma.product.findFirst({
-          where: { name: { contains: itemAny.name, mode: 'insensitive' } },
-        });
-      }
-      if (!prod) {
-        prod = await prisma.product.findFirst({ where: { is_active: true } });
-      }
+
       if (prod) {
         resolvedProdId = prod.id;
       }
+
       const itemSubtotal = it.quantity * it.unit_cost;
       const taxRate = it.tax_rate || (prod ? Number(prod.tax_rate) : 0);
       const itemTax = (itemSubtotal * taxRate) / 100;
@@ -197,42 +223,71 @@ router.post('/', async (req, res): Promise<void> => {
 });
 
 router.post('/:id/receive', async (req, res): Promise<void> => {
+  const poId = req.params.id;
+  const { notes, items: receivedItems } = req.body;
+
   try {
-    const po = await prisma.purchaseOrder.findUnique({
-      where: { id: req.params.id },
-      include: { items: true },
-    });
-
-    if (!po) {
-      res.status(404).json({ error: 'Purchase order not found' });
-      return;
-    }
-
-    if (po.status === 'RECEIVED') {
-      res.status(400).json({ error: 'Purchase order has already been received' });
-      return;
-    }
-
     await prisma.$transaction(
       async (tx) => {
-        // 1. Mark PO received
+        // 1. Fetch fresh PO inside transaction to prevent race conditions & double-receiving
+        const po = await tx.purchaseOrder.findUnique({
+          where: { id: poId },
+          include: { items: true },
+        });
+
+        if (!po) {
+          throw new Error('Purchase order not found');
+        }
+
+        if (po.status === 'RECEIVED') {
+          throw new Error('Purchase order has already been received');
+        }
+
+        // Prevent duplicate ledger entries
+        const existingReceipt = await tx.stockMovement.findFirst({
+          where: {
+            reference_id: po.id,
+            movement_type: 'PURCHASE_RECEIPT',
+          },
+        });
+        if (existingReceipt) {
+          throw new Error('Goods receipt already recorded in ledger for this purchase order');
+        }
+
+        // 2. Mark PO received atomically
         await tx.purchaseOrder.update({
           where: { id: po.id },
           data: { status: 'RECEIVED' },
         });
 
-        // 2. Record stock movements in ledger
+        // 3. Build received quantities map if custom quantities were provided
+        const qtyMap: Record<string, number> = {};
+        if (Array.isArray(receivedItems)) {
+          for (const item of receivedItems) {
+            if (item.product_id && typeof item.quantity === 'number') {
+              qtyMap[item.product_id] = item.quantity;
+            }
+          }
+        }
+
+        // 4. Record stock movements in ledger and update stock balances atomically
         for (const item of po.items) {
+          const qtyToReceive = qtyMap[item.product_id] !== undefined
+            ? Math.max(0, qtyMap[item.product_id])
+            : Number(item.quantity);
+
+          if (qtyToReceive <= 0) continue;
+
           await LedgerService.recordMovement(
             {
               product_id: item.product_id,
               godown_id: po.godown_id,
               movement_type: 'PURCHASE_RECEIPT',
-              quantity: Number(item.quantity),
+              quantity: qtyToReceive,
               unit_cost: Number(item.unit_cost),
               reference_type: 'PURCHASE_ORDER',
               reference_id: po.id,
-              notes: `Goods receipt for PO ${po.po_number}`,
+              notes: notes ? `Goods receipt for PO ${po.po_number}: ${notes}` : `Goods receipt for PO ${po.po_number}`,
               created_by: req.user?.id,
             },
             tx
@@ -246,9 +301,11 @@ router.post('/:id/receive', async (req, res): Promise<void> => {
     );
 
     res.json({ success: true, message: 'Stock received and ledger recorded successfully' });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Receive PO error:', err);
-    res.status(500).json({ error: 'Failed to receive purchase order' });
+    const msg = err?.message || 'Failed to receive purchase order';
+    const status = msg.includes('not found') ? 404 : msg.includes('already') ? 400 : 500;
+    res.status(status).json({ error: msg });
   }
 });
 

@@ -725,10 +725,10 @@ export const api = {
   getPurchaseOrders: async () => fetchWithFallback<any[]>('/purchase-orders'),
   createPurchaseOrder: async (data: any) =>
     fetchWithFallback<any>('/purchase-orders', { method: 'POST', body: JSON.stringify(data) }),
-  receiveGoodsGRN: async (poId: string, notes?: string) =>
+  receiveGoodsGRN: async (poId: string, notes?: string, items?: any[]) =>
     fetchWithFallback<any>(`/purchase-orders/${poId}/receive`, {
       method: 'POST',
-      body: JSON.stringify({ notes }),
+      body: JSON.stringify({ notes, items }),
     }),
   getSalesOrders: async () => fetchWithFallback<any[]>('/sales-orders'),
   createSalesOrder: async (data: any) =>
