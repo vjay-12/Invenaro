@@ -26,7 +26,8 @@ export async function authMiddleware(
 ): Promise<void> {
   const authHeader = req.headers['authorization'];
   const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-  const sessionToken = req.cookies?.['invenaro_session'] || bearerToken;
+  const queryToken = typeof req.query?.token === 'string' ? req.query.token.trim() : null;
+  const sessionToken = req.cookies?.['invenaro_session'] || bearerToken || queryToken;
 
   if (!sessionToken) {
     res.status(401).json({ error: 'Authentication required' });

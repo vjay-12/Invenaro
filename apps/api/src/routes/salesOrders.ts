@@ -478,6 +478,54 @@ router.post('/:id/pay', async (req, res): Promise<void> => {
   }
 });
 
+router.get('/:id/pdf', async (req, res): Promise<void> => {
+  try {
+    const order = await prisma.salesOrder.findUnique({
+      where: { id: req.params.id },
+      include: {
+        customer: true,
+        godown: true,
+        invoices: {
+          include: {
+            payments: {
+              orderBy: { payment_date: 'desc' },
+            },
+          },
+        },
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+
+    const settings = await prisma.companySettings.findFirst();
+    const formatted = formatOrder(order);
+    const { generateSalesOrderPdf } = await import('../services/pdf.js');
+    const pdfBuffer = await generateSalesOrderPdf(formatted, settings);
+
+    const safeNumber = (order.order_number || 'sales_order').replace(/[\/\\]/g, '_');
+    const isDownload = req.query.download === 'true';
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `${isDownload ? 'attachment' : 'inline'}; filename="Sales_Order_${safeNumber}.pdf"`
+    );
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    console.error('Sales Order PDF generation error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to generate order PDF' });
+  }
+});
+
 router.get('/:id', async (req, res): Promise<void> => {
   try {
     const order = await prisma.salesOrder.findUnique({

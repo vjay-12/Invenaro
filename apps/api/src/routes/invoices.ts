@@ -75,6 +75,92 @@ router.post('/:id/pay', async (req, res): Promise<void> => {
   }
 });
 
+// Invoice PDF download/preview endpoint - accessible on all plans for order receipts and tax invoices
+router.get('/:id/pdf', async (req, res): Promise<void> => {
+  const invoiceId = req.params.id;
+  try {
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        customer: true,
+        godown: true,
+        payments: {
+          orderBy: { payment_date: 'desc' },
+        },
+        sales_order: {
+          include: {
+            customer: true,
+            godown: true,
+            items: {
+              include: {
+                product: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!invoice) {
+      res.status(404).json({ error: 'Invoice not found' });
+      return;
+    }
+
+    const settings = await prisma.companySettings.findFirst();
+    const { generateInvoicePdf } = await import('../services/pdf.js');
+    const pdfBuffer = await generateInvoicePdf(invoice, settings);
+
+    const safeNumber = (invoice.invoice_number || 'invoice').replace(/[\/\\]/g, '_');
+    const isDownload = req.query.download === 'true';
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `${isDownload ? 'attachment' : 'inline'}; filename="Tax_Invoice_${safeNumber}.pdf"`
+    );
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    console.error('Invoice PDF generation error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to generate invoice PDF' });
+  }
+});
+
+// Single invoice lookup endpoint
+router.get('/:id', async (req, res): Promise<void> => {
+  const invoiceId = req.params.id;
+  try {
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        customer: true,
+        godown: true,
+        payments: {
+          orderBy: { payment_date: 'desc' },
+        },
+        sales_order: {
+          include: {
+            items: {
+              include: {
+                product: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!invoice) {
+      res.status(404).json({ error: 'Invoice not found' });
+      return;
+    }
+
+    res.json(invoice);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch invoice details' });
+  }
+});
+
 // Guard advanced invoice list and manual creation behind invoices_returns module
 router.use(requireModule('invoices_returns'));
 
