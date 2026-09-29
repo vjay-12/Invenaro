@@ -154,6 +154,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (
         type === 'IN' ||
         type === 'PURCHASE_RECEIPT' ||
+        type === 'OPENING' ||
+        type === 'INITIAL' ||
         type === 'ADJUSTMENT_ADD' ||
         type === 'RETURN_IN'
       ) {
@@ -223,6 +225,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             address: bl.address || '',
             capacity: bl.capacity || 10000,
             isActive: bl.is_active ?? true,
+            isDefault: bl.is_default ?? false,
+            is_default: bl.is_default ?? false,
           }));
           setLocations(loadedLocs);
           localStorage.setItem(`invenza_tenant_${syncingForTenantId}_locations`, JSON.stringify(loadedLocs));
@@ -244,6 +248,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 address: createdLoc.address || '',
                 capacity: createdLoc.capacity || 100000,
                 isActive: createdLoc.is_active ?? true,
+                isDefault: true,
+                is_default: true,
               }];
               setLocations(loadedLocs);
               localStorage.setItem(`invenza_tenant_${syncingForTenantId}_locations`, JSON.stringify(loadedLocs));
@@ -256,7 +262,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.warn('Backend locations sync fallback:', locErr);
       }
 
-      const activeDefaultLocId = loadedLocs[0]?.id || locations[0]?.id || 'WH-MAIN';
+      const defaultLocCandidate =
+        loadedLocs.find((l) => (l as any).isDefault || (l as any).is_default) ||
+        loadedLocs[0] ||
+        locations.find((l) => (l as any).isDefault || (l as any).is_default) ||
+        locations[0];
+      const activeDefaultLocId = defaultLocCandidate?.id || 'WH-MAIN';
 
       // 2. Movements / Ledger from PostgreSQL
       let dbMovements: StockMovement[] = [];

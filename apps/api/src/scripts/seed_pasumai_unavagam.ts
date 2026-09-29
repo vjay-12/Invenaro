@@ -107,6 +107,14 @@ async function main() {
       },
     });
   }
+  // Clean up any empty stale godowns without stock balances or movements
+  await prisma.godown.deleteMany({
+    where: {
+      is_default: false,
+      stock_balances: { none: {} },
+      stock_movements: { none: {} },
+    },
+  });
   console.log(`    ✓ Godown: ${godown.name} (${godown.code}) | Location: ${godown.address}\n`);
 
   // Update dev-admin user assignment

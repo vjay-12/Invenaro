@@ -134,15 +134,17 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
   const [shippingAddress, setShippingAddress] = useState('');
   const [shippingState, setShippingState] = useState(() => getDefaultShippingState().name);
   const [shippingStateCode, setShippingStateCode] = useState(() => getDefaultShippingState().code);
+  const defaultLocation = locations.find((l) => (l as any).isDefault || (l as any).is_default) || locations[0];
   const [sourceLocationId, setSourceLocationId] = useState(
-    selectedLocationId !== 'all' ? selectedLocationId : (locations[0]?.id || '')
+    selectedLocationId !== 'all' ? selectedLocationId : (defaultLocation?.id || '')
   );
 
   useEffect(() => {
     if (selectedLocationId !== 'all') {
       setSourceLocationId(selectedLocationId);
     } else if (locations.length > 0) {
-      setSourceLocationId((prev) => prev || locations[0].id);
+      const def = locations.find((l) => (l as any).isDefault || (l as any).is_default) || locations[0];
+      setSourceLocationId((prev) => (prev && locations.some((l) => l.id === prev) ? prev : def.id));
     }
   }, [locations, selectedLocationId]);
 

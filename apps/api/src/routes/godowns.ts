@@ -11,7 +11,7 @@ router.use(authMiddleware);
 router.get('/', async (req, res): Promise<void> => {
   try {
     let godowns = await prisma.godown.findMany({
-      orderBy: { created_at: 'asc' },
+      orderBy: [{ is_default: 'desc' }, { created_at: 'asc' }],
       include: {
         _count: {
           select: {

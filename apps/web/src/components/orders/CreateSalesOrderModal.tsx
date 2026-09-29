@@ -83,8 +83,9 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
   // Sync state when modal opens or warehouse / taxConfig changes
   useEffect(() => {
     if (isOpen) {
+      const defaultLoc = locations.find((l) => (l as any).isDefault || (l as any).is_default) || locations[0];
       const preferredLoc =
-        initialWarehouseId || (selectedLocationId !== 'all' ? selectedLocationId : (locations[0]?.id || ''));
+        initialWarehouseId || (selectedLocationId !== 'all' ? selectedLocationId : (defaultLoc?.id || ''));
       setSourceLocationId(preferredLoc);
 
       const defBill = getDefaultBillingState();

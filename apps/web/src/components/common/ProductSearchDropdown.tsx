@@ -30,9 +30,10 @@ export const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
   const listRef = useRef<HTMLDivElement>(null);
 
   const selectedProduct = products.find((p) => p.id === selectedProductId);
-  const selectedProductStock = warehouseId
-    ? (selectedProduct?.locationStock?.[warehouseId] ?? 0)
-    : (selectedProduct?.currentStock ?? 0);
+  const selectedProductStock =
+    warehouseId && selectedProduct?.locationStock && selectedProduct.locationStock[warehouseId] !== undefined
+      ? selectedProduct.locationStock[warehouseId]
+      : (selectedProduct?.currentStock ?? 0);
   const isSelectedOutOfStock = Boolean(selectedProduct && selectedProductStock === 0);
 
   // Sort products alphabetically by product name (A→Z)
@@ -221,9 +222,10 @@ export const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
               filteredProducts.map((p, idx) => {
                 const isSelected = p.id === selectedProductId;
                 const isHighlighted = idx === highlightedIndex;
-                const locStock = warehouseId
-                  ? (p.locationStock?.[warehouseId] ?? 0)
-                  : (p.currentStock ?? 0);
+                const locStock =
+                  warehouseId && p.locationStock && p.locationStock[warehouseId] !== undefined
+                    ? p.locationStock[warehouseId]
+                    : (p.currentStock ?? 0);
                 const isOut = locStock === 0;
 
                 return (

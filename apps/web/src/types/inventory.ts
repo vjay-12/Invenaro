@@ -10,6 +10,8 @@ export interface Location {
   city?: string;
   capacity?: number;
   isActive: boolean;
+  isDefault?: boolean;
+  is_default?: boolean;
 }
 
 export interface CustomFieldDefinition {
