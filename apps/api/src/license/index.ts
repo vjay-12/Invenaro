@@ -18,6 +18,14 @@ export class LicenseService {
     fetchedAt: number;
   } | null = null;
 
+  static isLocalBasic(): boolean {
+    return (
+      process.env.LOCAL_BASIC_MODE === 'true' &&
+      process.env.NODE_ENV !== 'production' &&
+      !process.env.VERCEL
+    );
+  }
+
   static async getEntitlements(): Promise<{
     customer_id: string;
     plan: LicensePlan;
@@ -25,6 +33,22 @@ export class LicenseService {
     state: OperationalLicenseState;
     expires_at: string;
   }> {
+    if (this.isLocalBasic()) {
+      return {
+        customer_id: 'local-basic-dev',
+        plan: 'basic',
+        modules: DEFAULT_PLAN_MODULES.basic,
+        state: {
+          state: 'active',
+          message: 'Local Basic Plan (Development Mode)',
+          isReadOnly: false,
+          isFullAccess: true,
+          graceEndsAt: null,
+        },
+        expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      };
+    }
+
     const now = Date.now();
 
     // Fast in-memory cache for serverless invocation lifecycle (30 seconds)
@@ -118,6 +142,17 @@ export class LicenseService {
   }
 
   static async getStatus(): Promise<LicenseStatusDTO> {
+    if (this.isLocalBasic()) {
+      return {
+        plan: 'basic',
+        modules: DEFAULT_PLAN_MODULES.basic,
+        state: 'active',
+        licenseExpiresAt: null,
+        graceEndsAt: null,
+        message: 'Local Basic Plan (Development Mode)',
+      };
+    }
+
     const entitlements = await this.getEntitlements();
     const claims = this.inMemoryCache?.claims;
 
@@ -132,6 +167,10 @@ export class LicenseService {
   }
 
   static async forceRefresh(): Promise<LicenseStatusDTO> {
+    if (this.isLocalBasic()) {
+      return this.getStatus();
+    }
+
     const licenseKey = process.env.LICENSE_KEY;
     if (!licenseKey) {
       throw new Error('LICENSE_KEY is not configured');
@@ -153,11 +192,17 @@ export class LicenseService {
   }
 
   static async getVerifiedClaims(): Promise<LicenseClaims | null> {
+    if (this.isLocalBasic()) {
+      return null;
+    }
     await this.getEntitlements();
     return this.inMemoryCache?.claims ?? null;
   }
 
   static async getVerifiedAdminEmail(): Promise<string | null> {
+    if (this.isLocalBasic()) {
+      return null;
+    }
     const claims = await this.getVerifiedClaims();
     return claims?.adminEmail ? claims.adminEmail.trim().toLowerCase() : null;
   }

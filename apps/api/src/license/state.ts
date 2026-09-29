@@ -45,6 +45,21 @@ export function getLicenseState(params: StateMachineParams): OperationalLicenseS
     }
   }
 
+  // 1a. Check LOCAL_BASIC_MODE=true (isolated local basic dev bypass only)
+  if (process.env.LOCAL_BASIC_MODE === 'true') {
+    if (nodeEnv !== 'production' && !process.env.VERCEL) {
+      return {
+        state: 'active',
+        message: 'Local Basic Plan (Development Mode)',
+        isReadOnly: false,
+        isFullAccess: true,
+        graceEndsAt: null,
+      };
+    } else {
+      console.warn('⚠️ WARNING: LOCAL_BASIC_MODE is ignored in production/Vercel environment.');
+    }
+  }
+
   // 2. No valid verified token exists
   if (!claims) {
     return {

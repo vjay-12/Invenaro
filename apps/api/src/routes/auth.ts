@@ -71,7 +71,8 @@ router.post('/setup', async (req: Request, res: Response): Promise<void> => {
     }
 
     // If license is active/grace but lacks an assigned adminEmail (SETUP-12 contract)
-    if ((state === 'active' || state === 'grace') && !verifiedAdminEmail) {
+    const isLocalBasic = LicenseService.isLocalBasic();
+    if (!isLocalBasic && (state === 'active' || state === 'grace') && !verifiedAdminEmail) {
       res.status(400).json({
         error: 'Deployment does not have a valid license with an assigned administrator email.',
       });
@@ -79,7 +80,7 @@ router.post('/setup', async (req: Request, res: Response): Promise<void> => {
     }
 
     // 2. Normalize and compare emails if licensed admin email is bound
-    if (verifiedAdminEmail && submittedEmail !== verifiedAdminEmail) {
+    if (!isLocalBasic && verifiedAdminEmail && submittedEmail !== verifiedAdminEmail) {
       res.status(403).json({
         error: 'The email address does not match the administrator email assigned to this deployment.',
       });
@@ -274,13 +275,22 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     });
 
     const entitlements = await LicenseService.getEntitlements();
+    let companyName = 'Pasumai Unavagam';
+    try {
+      const companySettings = await prisma.companySettings.findUnique({ where: { id: 'default_settings' } });
+      if (companySettings?.company_name) {
+        companyName = companySettings.company_name;
+      }
+    } catch {
+      // Fallback if database is unavailable or mocked during unit tests
+    }
 
     res.json({
       access_token: token,
       must_change_password: Boolean(user.must_change_password),
       user_role: user.role === 'OWNER' ? 'admin' : user.role.toLowerCase(),
       full_name: user.name,
-      company_name: 'Invenaro Operations',
+      company_name: companyName,
       user: {
         id: user.id,
         name: user.name,

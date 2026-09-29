@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './env.js';
 import express, { Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';

@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: invenaro_local_basic_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: invenaro_local
+      POSTGRES_PASSWORD: local_password_123
+      POSTGRES_DB: invenaro_local_basic
+    ports:
+      - "5435:5432"
+    volumes:
+      - invenaro_local_basic_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U invenaro_local -d invenaro_local_basic"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  invenaro_local_basic_data:

@@ -1,4 +1,11 @@
-import 'dotenv/config';
+import fs from 'fs';
+import dotenv from 'dotenv';
+
+if (fs.existsSync('.env.local_basic')) {
+  dotenv.config({ path: '.env.local_basic', override: true });
+} else {
+  dotenv.config();
+}
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
