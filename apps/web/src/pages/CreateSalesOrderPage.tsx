@@ -88,7 +88,9 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
     if (taxConfig?.taxType === 'SALES_TAX') {
       return { code: 'CA', name: 'California' };
     }
-    return { code: '29', name: 'Karnataka' };
+    const defCode = (user as any)?.stateCode || (user as any)?.state_code || taxConfig?.stateCode || '33';
+    const defName = (user as any)?.state || (defCode === '33' ? 'Tamil Nadu' : (taxConfig?.stateName || 'Tamil Nadu'));
+    return { code: defCode, name: defName };
   };
 
   const getDefaultShippingState = () => {
@@ -98,7 +100,9 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
     if (taxConfig?.taxType === 'SALES_TAX') {
       return { code: 'NY', name: 'New York' };
     }
-    return { code: '33', name: 'Tamil Nadu' };
+    const defCode = (user as any)?.stateCode || (user as any)?.state_code || taxConfig?.stateCode || '33';
+    const defName = (user as any)?.state || (defCode === '33' ? 'Tamil Nadu' : (taxConfig?.stateName || 'Tamil Nadu'));
+    return { code: defCode, name: defName };
   };
 
   // Customers state - initialize from cache for instant 0ms rendering
@@ -474,38 +478,76 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
       };
     }
 
-    // India GST
-    const supplierStateCode = taxConfig.stateCode || '29';
-    const isInterState = effectiveShipCode !== supplierStateCode;
-    const standardRate = taxConfig.standardRate || 18.0;
+    // India GST - Authoritatively calculate based on selected products' statutory GST rates
+    const supplierStateCode = (user as any)?.stateCode || (user as any)?.state_code || taxConfig.stateCode || '33';
+    const isInterState = Boolean(effectiveShipCode && supplierStateCode && effectiveShipCode !== supplierStateCode);
+
+    let totalTaxAmount = 0;
+    const rateTotals: Record<number, number> = {};
+
+    lineItems.forEach((it) => {
+      const gross = (it.orderedQty || 0) * (it.unitPrice || 0);
+      const discPct = Math.max(0, Math.min(100, it.discountPercent || 0));
+      const lineTaxable = Math.max(0, gross - (gross * discPct) / 100);
+
+      const prod = products.find((p) => p.id === it.productId);
+      const itemTaxRate =
+        (it as any).taxRate !== undefined && (it as any).taxRate !== null
+          ? Number((it as any).taxRate)
+          : prod?.taxRate !== undefined && prod?.taxRate !== null
+          ? Number(prod.taxRate)
+          : prod?.gstRate !== undefined && prod?.gstRate !== null
+          ? Number(prod.gstRate)
+          : 5.0;
+
+      const lineTax = (lineTaxable * itemTaxRate) / 100;
+      totalTaxAmount += lineTax;
+      rateTotals[itemTaxRate] = (rateTotals[itemTaxRate] || 0) + lineTaxable;
+    });
+
+    const uniqueRates = Object.keys(rateTotals).map(Number);
+    const effectiveRate = taxableSubtotal > 0
+      ? (totalTaxAmount / taxableSubtotal) * 100
+      : (uniqueRates[0] ?? 5.0);
+    const displayRate = Number(effectiveRate.toFixed(2));
 
     if (isInterState) {
-      const igstAmount = (taxableSubtotal * standardRate) / 100;
       return {
         isTaxEnabled: true,
         taxType: 'GST',
         taxableValue: taxableSubtotal,
-        taxes: [{ label: `IGST (${standardRate}%)`, rate: standardRate, amount: igstAmount }],
-        taxTotal: igstAmount,
-        grandTotal: Math.round(taxableSubtotal + igstAmount),
+        taxes: [{ label: `IGST (${displayRate}%)`, rate: displayRate, amount: totalTaxAmount }],
+        taxTotal: totalTaxAmount,
+        grandTotal: Number((taxableSubtotal + totalTaxAmount).toFixed(2)),
       };
     } else {
-      const halfRate = standardRate / 2;
-      const cgstAmount = (taxableSubtotal * halfRate) / 100;
-      const sgstAmount = (taxableSubtotal * halfRate) / 100;
+      const halfRate = Number((displayRate / 2).toFixed(2));
+      const halfAmount = totalTaxAmount / 2;
       return {
         isTaxEnabled: true,
         taxType: 'GST',
         taxableValue: taxableSubtotal,
         taxes: [
-          { label: `CGST (${halfRate}%)`, rate: halfRate, amount: cgstAmount },
-          { label: `SGST (${halfRate}%)`, rate: halfRate, amount: sgstAmount },
+          { label: `CGST (${halfRate}%)`, rate: halfRate, amount: halfAmount },
+          { label: `SGST (${halfRate}%)`, rate: halfRate, amount: halfAmount },
         ],
-        taxTotal: cgstAmount + sgstAmount,
-        grandTotal: Math.round(taxableSubtotal + cgstAmount + sgstAmount),
+        taxTotal: totalTaxAmount,
+        grandTotal: Number((taxableSubtotal + totalTaxAmount).toFixed(2)),
       };
     }
-  }, [isTaxEnabled, taxConfig, taxableSubtotal, hasSeparateShipping, shippingState, shippingStateCode, billingState, billingStateCode]);
+  }, [
+    isTaxEnabled,
+    taxConfig,
+    taxableSubtotal,
+    lineItems,
+    products,
+    user,
+    hasSeparateShipping,
+    shippingState,
+    shippingStateCode,
+    billingState,
+    billingStateCode,
+  ]);
 
   const handleSubmitSO = async (e: React.FormEvent) => {
     e.preventDefault();

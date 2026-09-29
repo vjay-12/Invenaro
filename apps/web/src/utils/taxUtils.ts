@@ -320,13 +320,27 @@ export function getTaxConfig(
 
   // Default: Indian GST
   const standardRate = overrideRate !== undefined ? overrideRate : 18.0;
+  const stLower = (stateInput || '').toLowerCase().trim();
+  let stateCode = '33';
+  let stateName = stateInput || 'Tamil Nadu';
+  if (stLower === 'karnataka' || stLower === '29') {
+    stateCode = '29';
+    stateName = 'Karnataka';
+  } else if (stLower === 'tamil nadu' || stLower === 'tamilnadu' || stLower === '33') {
+    stateCode = '33';
+    stateName = 'Tamil Nadu';
+  } else if (stateInput) {
+    stateCode = stateInput.length === 2 && !isNaN(Number(stateInput)) ? stateInput : '33';
+    stateName = stateInput;
+  }
+
   return {
     taxType: 'GST',
     taxLabel: 'GST',
     countryCode: 'IN',
     countryName: 'India',
-    stateCode: '29',
-    stateName: stateInput || 'Karnataka',
+    stateCode,
+    stateName,
     currencyCode: 'INR',
     currencySymbol: '₹',
     standardRate,
