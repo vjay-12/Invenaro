@@ -1,19 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   IconPlus,
   IconTrash2,
   IconAlertCircle,
   IconAlertTriangle,
   IconWarehouse,
+  IconBarcode,
 } from '../icons';
 import { useInventory } from '../../context/InventoryContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLicense } from '../../context/LicenseContext';
-import { SOLineItem } from '../../types/inventory';
+import { SOLineItem, Product } from '../../types/inventory';
 import { Modal } from '../common/Modal';
 import { ProductSearchDropdown } from '../common/ProductSearchDropdown';
 import { WarehouseSelectDropdown } from '../common/WarehouseSelectDropdown';
 import { StateSelectDropdown } from '../common/StateSelectDropdown';
+import { BarcodeScannerModal } from '../common/BarcodeScannerModal';
+import { EU_VAT_RATES, US_STATE_SALES_TAX_RATES } from '../../utils/taxUtils';
 
 export interface CreateSalesOrderModalProps {
   isOpen: boolean;
@@ -49,7 +52,9 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     if (taxConfig?.taxType === 'SALES_TAX') {
       return { code: 'CA', name: 'California' };
     }
-    return { code: '29', name: 'Karnataka' };
+    const defCode = (user as any)?.stateCode || (user as any)?.state_code || taxConfig?.stateCode || '33';
+    const defName = (user as any)?.state || (defCode === '33' ? 'Tamil Nadu' : (taxConfig?.stateName || 'Tamil Nadu'));
+    return { code: defCode, name: defName };
   };
 
   const getDefaultShippingState = () => {
@@ -59,7 +64,9 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     if (taxConfig?.taxType === 'SALES_TAX') {
       return { code: 'NY', name: 'New York' };
     }
-    return { code: '33', name: 'Tamil Nadu' };
+    const defCode = (user as any)?.stateCode || (user as any)?.state_code || taxConfig?.stateCode || '33';
+    const defName = (user as any)?.state || (defCode === '33' ? 'Tamil Nadu' : (taxConfig?.stateName || 'Tamil Nadu'));
+    return { code: defCode, name: defName };
   };
 
   // Form state
@@ -79,6 +86,51 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
   const [soNotes, setSoNotes] = useState('');
 
   const [lineItems, setLineItems] = useState<SOLineItem[]>([]);
+  const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false);
+
+  const handleProductScannedSO = (product: Product) => {
+    setLineItems((prev) => {
+      const existingIndex = prev.findIndex((item) => item.productId === product.id);
+      if (existingIndex !== -1) {
+        // Increment quantity by 1 if already in the sales order
+        const copy = [...prev];
+        copy[existingIndex] = {
+          ...copy[existingIndex],
+          orderedQty: (copy[existingIndex].orderedQty || 0) + 1,
+        };
+        return copy;
+      }
+
+      // If the only line item is blank (no productId selected), replace it
+      if (prev.length === 1 && !prev[0].productId) {
+        return [
+          {
+            productId: product.id,
+            sku: product.sku,
+            name: product.name,
+            orderedQty: 1,
+            fulfilledQty: 0,
+            unitPrice: product.sellPrice || 0,
+            discountPercent: 0,
+          },
+        ];
+      }
+
+      // Otherwise add a new line with Qty 1
+      return [
+        ...prev,
+        {
+          productId: product.id,
+          sku: product.sku,
+          name: product.name,
+          orderedQty: 1,
+          fulfilledQty: 0,
+          unitPrice: product.sellPrice || 0,
+          discountPercent: 0,
+        },
+      ];
+    });
+  };
 
   // Sync state when modal opens or warehouse / taxConfig changes
   useEffect(() => {
@@ -222,8 +274,119 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
       return acc + (gross * discPct) / 100;
     }, 0);
 
-  const calculateGrandTotal = () =>
-    Math.max(0, calculateTotalGross() - calculateTotalDiscount());
+  const taxableSubtotal = Math.max(0, calculateTotalGross() - calculateTotalDiscount());
+
+  // Dynamic Live Tax Calculation matching CreateSalesOrderPage
+  const taxBreakdown = useMemo(() => {
+    if (!isTaxEnabled) {
+      return {
+        isTaxEnabled: false,
+        taxType: 'NONE',
+        taxableValue: taxableSubtotal,
+        taxes: [] as { label: string; rate: number; amount: number }[],
+        taxTotal: 0,
+        grandTotal: Math.round(taxableSubtotal),
+      };
+    }
+
+    const effectiveShipCode = hasSeparateShipping && shippingStateCode ? shippingStateCode : billingStateCode;
+
+    if (taxConfig.taxType === 'VAT') {
+      const vatRate = EU_VAT_RATES[effectiveShipCode] || taxConfig.standardRate || 19.0;
+      const vatAmount = (taxableSubtotal * vatRate) / 100;
+      return {
+        isTaxEnabled: true,
+        taxType: 'VAT',
+        taxableValue: taxableSubtotal,
+        taxes: [{ label: `VAT (${vatRate}%)`, rate: vatRate, amount: vatAmount }],
+        taxTotal: vatAmount,
+        grandTotal: Math.round(taxableSubtotal + vatAmount),
+      };
+    }
+
+    if (taxConfig.taxType === 'SALES_TAX') {
+      const salesTaxRate = US_STATE_SALES_TAX_RATES[effectiveShipCode] ?? taxConfig.standardRate ?? 7.25;
+      const salesTaxAmount = (taxableSubtotal * salesTaxRate) / 100;
+      return {
+        isTaxEnabled: true,
+        taxType: 'SALES_TAX',
+        taxableValue: taxableSubtotal,
+        taxes: [{ label: `State Sales Tax (${salesTaxRate}%)`, rate: salesTaxRate, amount: salesTaxAmount }],
+        taxTotal: salesTaxAmount,
+        grandTotal: Math.round(taxableSubtotal + salesTaxAmount),
+      };
+    }
+
+    // India GST - Authoritatively calculate based on selected products' statutory GST rates
+    const supplierStateCode = (user as any)?.stateCode || (user as any)?.state_code || taxConfig.stateCode || '33';
+    const isInterState = Boolean(effectiveShipCode && supplierStateCode && effectiveShipCode !== supplierStateCode);
+
+    let totalTaxAmount = 0;
+    const rateTotals: Record<number, number> = {};
+
+    lineItems.forEach((it) => {
+      const gross = (it.orderedQty || 0) * (it.unitPrice || 0);
+      const discPct = Math.max(0, Math.min(100, it.discountPercent || 0));
+      const lineTaxable = Math.max(0, gross - (gross * discPct) / 100);
+
+      const prod = products.find((p) => p.id === it.productId);
+      const itemTaxRate =
+        (it as any).taxRate !== undefined && (it as any).taxRate !== null
+          ? Number((it as any).taxRate)
+          : prod?.taxRate !== undefined && prod?.taxRate !== null
+          ? Number(prod.taxRate)
+          : prod?.gstRate !== undefined && prod?.gstRate !== null
+          ? Number(prod.gstRate)
+          : 5.0;
+
+      const lineTax = (lineTaxable * itemTaxRate) / 100;
+      totalTaxAmount += lineTax;
+      rateTotals[itemTaxRate] = (rateTotals[itemTaxRate] || 0) + lineTaxable;
+    });
+
+    const uniqueRates = Object.keys(rateTotals).map(Number);
+    const effectiveRate = taxableSubtotal > 0
+      ? (totalTaxAmount / taxableSubtotal) * 100
+      : (uniqueRates[0] ?? 5.0);
+    const displayRate = Number(effectiveRate.toFixed(2));
+
+    if (isInterState) {
+      return {
+        isTaxEnabled: true,
+        taxType: 'GST',
+        taxableValue: taxableSubtotal,
+        taxes: [{ label: `IGST (${displayRate}%)`, rate: displayRate, amount: totalTaxAmount }],
+        taxTotal: totalTaxAmount,
+        grandTotal: Number((taxableSubtotal + totalTaxAmount).toFixed(2)),
+      };
+    } else {
+      const halfRate = Number((displayRate / 2).toFixed(2));
+      const halfAmount = totalTaxAmount / 2;
+      return {
+        isTaxEnabled: true,
+        taxType: 'GST',
+        taxableValue: taxableSubtotal,
+        taxes: [
+          { label: `CGST (${halfRate}%)`, rate: halfRate, amount: halfAmount },
+          { label: `SGST (${halfRate}%)`, rate: halfRate, amount: halfAmount },
+        ],
+        taxTotal: totalTaxAmount,
+        grandTotal: Number((taxableSubtotal + totalTaxAmount).toFixed(2)),
+      };
+    }
+  }, [
+    isTaxEnabled,
+    taxConfig,
+    taxableSubtotal,
+    lineItems,
+    products,
+    user,
+    hasSeparateShipping,
+    shippingStateCode,
+    billingStateCode,
+  ]);
+
+  const calculateGrandTotal = () => taxBreakdown.grandTotal;
 
   const resetForm = () => {
     setCustomerName('');
@@ -296,7 +459,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
     const effectiveShipState = isShipSeparate ? shippingState : billingState;
     const effectiveShipCode = isShipSeparate ? shippingStateCode : billingStateCode;
 
-    const totalAmount = calculateGrandTotal();
+    const totalAmount = taxBreakdown.grandTotal;
 
     try {
       await createSalesOrder({
@@ -313,7 +476,22 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         sourceLocationId: resolvedLocationId,
         sourceLocationName: sourceLoc?.name || 'Main Godown',
         orderDate,
-        items: lineItems,
+        items: lineItems.map((it) => {
+          const prod = products.find((p) => p.id === it.productId);
+          const itemTaxRate =
+            (it as any).taxRate !== undefined && (it as any).taxRate !== null
+              ? Number((it as any).taxRate)
+              : prod?.taxRate !== undefined && prod?.taxRate !== null
+              ? Number(prod.taxRate)
+              : prod?.gstRate !== undefined && prod?.gstRate !== null
+              ? Number(prod.gstRate)
+              : 5.0;
+          return {
+            ...it,
+            taxRate: itemTaxRate,
+            tax_rate: itemTaxRate,
+          };
+        }),
         totalAmount,
         notes: soNotes,
       });
@@ -327,7 +505,8 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
   };
 
   return (
-    <Modal
+    <>
+      <Modal
       isOpen={isOpen}
       onClose={onClose}
       title="Create Customer Sales Order (SO)"
@@ -498,13 +677,24 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                 ({lineItems.length} {lineItems.length === 1 ? 'item' : 'items'})
               </span>
             </div>
-            <button
-              type="button"
-              onClick={handleAddLineItem}
-              className="flex items-center gap-1 text-xs font-bold text-teal-700 dark:text-teal-400 hover:underline"
-            >
-              <IconPlus className="h-3.5 w-3.5" /> Add SKU
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsBarcodeScannerOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 shadow-sm transition-all"
+                title="Scan product barcode with camera"
+              >
+                <IconBarcode className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                <span>Scan Barcode</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleAddLineItem}
+                className="flex items-center gap-1 text-xs font-bold text-teal-700 dark:text-teal-400 hover:underline"
+              >
+                <IconPlus className="h-3.5 w-3.5" /> Add SKU
+              </button>
+            </div>
           </div>
 
           {/* Table headers */}
@@ -693,9 +883,25 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
               </div>
             </>
           )}
+
+          {taxBreakdown.isTaxEnabled && taxBreakdown.taxes.length > 0 && (
+            <>
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span>Taxable Value</span>
+                <span className="font-mono">{formatCurrency(taxBreakdown.taxableValue)}</span>
+              </div>
+              {taxBreakdown.taxes.map((t, idx) => (
+                <div key={idx} className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+                  <span>{t.label}</span>
+                  <span className="font-mono">{formatCurrency(t.amount)}</span>
+                </div>
+              ))}
+            </>
+          )}
+
           <div className="flex items-center justify-between text-sm pt-1 border-t border-dashed border-slate-200 dark:border-slate-800">
             <span className="font-semibold text-slate-700 dark:text-slate-300">
-              Total Valuation {calculateTotalDiscount() > 0 ? '(Net Taxable Value)' : ''}
+              Total Order Value
             </span>
             <span className="font-mono font-bold text-base text-slate-900 dark:text-white">
               {formatCurrency(calculateGrandTotal())}
@@ -707,7 +913,7 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
                 * Note: Tax calculation is currently disabled. This order will be fulfilled as a plain Sales Receipt, without tax charges.
               </span>
             ) : (
-              `* Note: Trade discount is deducted before ${taxConfig.taxLabel} calculation. Applicable taxes are generated upon dispatch.`
+              `* Note: Trade discount is deducted before ${taxConfig.taxLabel} calculation.`
             )}
           </p>
         </div>
@@ -752,5 +958,15 @@ export const CreateSalesOrderModal: React.FC<CreateSalesOrderModalProps> = ({
         </div>
       </form>
     </Modal>
-  );
+
+    {/* Barcode Scanner Camera Modal for SO Modal */}
+    <BarcodeScannerModal
+      isOpen={isBarcodeScannerOpen}
+      onClose={() => setIsBarcodeScannerOpen(false)}
+      products={products}
+      onProductScanned={handleProductScannedSO}
+      title="Sales Order Barcode Scanner"
+    />
+  </>
+);
 };

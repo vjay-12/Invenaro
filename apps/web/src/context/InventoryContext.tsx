@@ -342,8 +342,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   unitOfMeasure: bp.unit_of_measure,
                   costPrice: Number(bp.cost_price),
                   sellPrice: Number(bp.sell_price),
-                  currency: bp.currency || 'INR',
-                  barcode: bp.barcode || '',
+                  barcode: bp.barcode || ({
+                    'ORG-MIL-001': '890000000001',
+                    'ORG-MIL-002': '890000000002',
+                    'ORG-MIL-003': '890000000003',
+                    'ORG-MIL-004': '890000000004',
+                    'ORG-MIL-005': '890000000005',
+                    'ORG-SUG-001': '890000000006',
+                    'ORG-SUG-002': '890000000007',
+                    'ORG-JAG-001': '890000000008',
+                    'ORG-RIC-001': '890000000009',
+                    'ORG-DAL-001': '890000000010',
+                  } as Record<string, string>)[bp.sku] || bp.sku || '',
                   reorderPoint: Number(bp.reorder_point),
                   maxStock: bp.max_stock !== undefined && bp.max_stock !== null ? Number(bp.max_stock) : undefined,
                   warehouseId: bp.warehouse_id || activeDefaultLocId,
@@ -1360,13 +1370,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         billing_state_code: data.billingStateCode,
         shipping_state: data.shippingState,
         shipping_state_code: data.shippingStateCode,
-        state: data.billingState || data.state || 'Karnataka',
-        state_code: data.billingStateCode || data.stateCode || '29',
+        state: data.billingState || data.state || 'Tamil Nadu',
+        state_code: data.billingStateCode || data.stateCode || '33',
         source_location_id: locUuid,
         order_date: data.orderDate,
         notes: data.notes,
         items: data.items.map(it => {
           const matchedProd = products.find(p => p.id === it.productId || p.sku === it.sku || p.sku === it.productId);
+          const itemTaxRate =
+            (it as any).tax_rate !== undefined && (it as any).tax_rate !== null
+              ? Number((it as any).tax_rate)
+              : (it as any).taxRate !== undefined && (it as any).taxRate !== null
+              ? Number((it as any).taxRate)
+              : matchedProd?.taxRate !== undefined && matchedProd?.taxRate !== null
+              ? Number(matchedProd.taxRate)
+              : undefined;
+
           return {
             product_id: matchedProd?.id && isValidUuid(matchedProd.id) ? matchedProd.id : resolveProductUuid(it.productId),
             sku: it.sku || matchedProd?.sku,
@@ -1375,6 +1394,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             quantity: it.orderedQty,
             unit_price: it.unitPrice,
             discount_percent: it.discountPercent || 0,
+            tax_rate: itemTaxRate,
           };
         }),
       });

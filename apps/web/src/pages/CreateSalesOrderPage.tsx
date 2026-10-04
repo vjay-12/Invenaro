@@ -12,6 +12,7 @@ import {
   IconBuilding,
   IconLayers,
   IconWarehouse,
+  IconBarcode,
 } from '../components/icons';
 import { useInventory } from '../context/InventoryContext';
 import { useAuth } from '../context/AuthContext';
@@ -25,6 +26,7 @@ import { useLicense } from '../context/LicenseContext';
 import { api } from '../services/api';
 import { TabType } from '../components/layout/Sidebar';
 import { EU_VAT_RATES, US_STATE_SALES_TAX_RATES } from '../utils/taxUtils';
+import { BarcodeScannerModal } from '../components/common/BarcodeScannerModal';
 
 interface CreateSalesOrderPageProps {
   onNavigate?: (tab: TabType, params?: Record<string, string>, replace?: boolean) => void;
@@ -158,6 +160,51 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
   const [lineItems, setLineItems] = useState<SOLineItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false);
+
+  const handleProductScannedSO = (product: Product) => {
+    setLineItems((prev) => {
+      const existingIndex = prev.findIndex((item) => item.productId === product.id);
+      if (existingIndex !== -1) {
+        // Increment quantity by 1 if already in the sales order
+        const copy = [...prev];
+        copy[existingIndex] = {
+          ...copy[existingIndex],
+          orderedQty: (copy[existingIndex].orderedQty || 0) + 1,
+        };
+        return copy;
+      }
+
+      // If the only line item is blank (no productId selected), replace it
+      if (prev.length === 1 && !prev[0].productId) {
+        return [
+          {
+            productId: product.id,
+            sku: product.sku,
+            name: product.name,
+            orderedQty: 1,
+            fulfilledQty: 0,
+            unitPrice: product.sellPrice || 0,
+            discountPercent: 0,
+          },
+        ];
+      }
+
+      // Otherwise add a new line with Qty 1
+      return [
+        ...prev,
+        {
+          productId: product.id,
+          sku: product.sku,
+          name: product.name,
+          orderedQty: 1,
+          fulfilledQty: 0,
+          unitPrice: product.sellPrice || 0,
+          discountPercent: 0,
+        },
+      ];
+    });
+  };
 
   const customerDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -936,13 +983,24 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
                 ({lineItems.length} {lineItems.length === 1 ? 'item' : 'items'})
               </span>
             </div>
-            <button
-              type="button"
-              onClick={handleAddLineItem}
-              className="flex items-center gap-1 text-xs font-bold text-teal-700 dark:text-teal-400 hover:underline"
-            >
-              <IconPlus className="h-3.5 w-3.5" /> Add SKU
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsBarcodeScannerOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 shadow-sm transition-all"
+                title="Scan product barcode with camera"
+              >
+                <IconBarcode className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                <span>Scan Barcode</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleAddLineItem}
+                className="flex items-center gap-1 text-xs font-bold text-teal-700 dark:text-teal-400 hover:underline"
+              >
+                <IconPlus className="h-3.5 w-3.5" /> Add SKU
+              </button>
+            </div>
           </div>
 
           {/* Table Headers */}
@@ -1332,6 +1390,15 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
           </form>
         </Modal>
       )}
+
+      {/* Barcode Scanner Camera Modal for SO */}
+      <BarcodeScannerModal
+        isOpen={isBarcodeScannerOpen}
+        onClose={() => setIsBarcodeScannerOpen(false)}
+        products={products}
+        onProductScanned={handleProductScannedSO}
+        title="Sales Order Barcode Scanner"
+      />
     </div>
   );
 };

@@ -9,15 +9,17 @@ import {
   IconPackage,
   IconTrash2,
   IconAlertTriangle,
+  IconBarcode,
 } from '../components/icons';
 import { useInventory } from '../context/InventoryContext';
 import { useLicense } from '../context/LicenseContext';
-import { PurchaseOrder, POLineItem } from '../types/inventory';
+import { PurchaseOrder, POLineItem, Product } from '../types/inventory';
 import { Modal } from '../components/common/Modal';
 import { PageMeta } from '../components/common/PageMeta';
 import { WarehouseSelectDropdown } from '../components/common/WarehouseSelectDropdown';
 import { ProductSearchDropdown } from '../components/common/ProductSearchDropdown';
 import { Pagination } from '../components/common/Pagination';
+import { BarcodeScannerModal } from '../components/common/BarcodeScannerModal';
 
 export const PurchaseOrders: React.FC = () => {
   const {
@@ -71,6 +73,50 @@ export const PurchaseOrders: React.FC = () => {
       unitCost: products[0]?.costPrice || 50,
     },
   ]);
+
+  const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false);
+
+  const handleProductScannedPO = (product: Product) => {
+    setLineItems((prev) => {
+      const existingIndex = prev.findIndex((item) => item.productId === product.id);
+      if (existingIndex !== -1) {
+        // Increment quantity by 1 if already in the purchase order
+        const copy = [...prev];
+        copy[existingIndex] = {
+          ...copy[existingIndex],
+          orderedQty: (copy[existingIndex].orderedQty || 0) + 1,
+        };
+        return copy;
+      }
+
+      // If the only line item is blank (no productId selected), replace it
+      if (prev.length === 1 && !prev[0].productId) {
+        return [
+          {
+            productId: product.id,
+            sku: product.sku,
+            name: product.name,
+            orderedQty: 1,
+            receivedQty: 0,
+            unitCost: product.costPrice || 0,
+          },
+        ];
+      }
+
+      // Otherwise add a new line with Qty 1
+      return [
+        ...prev,
+        {
+          productId: product.id,
+          sku: product.sku,
+          name: product.name,
+          orderedQty: 1,
+          receivedQty: 0,
+          unitCost: product.costPrice || 0,
+        },
+      ];
+    });
+  };
 
   const handleAddLineItem = () => {
     const p = products[0];
@@ -589,13 +635,24 @@ export const PurchaseOrders: React.FC = () => {
               <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 Line Items
               </span>
-              <button
-                type="button"
-                onClick={handleAddLineItem}
-                className="flex items-center gap-1 text-xs font-bold text-teal-700 dark:text-teal-400 hover:underline"
-              >
-                <IconPlus className="h-3.5 w-3.5" /> Add SKU
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBarcodeScannerOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 shadow-sm transition-all"
+                  title="Scan product barcode with camera"
+                >
+                  <IconBarcode className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                  <span>Scan Barcode</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddLineItem}
+                  className="flex items-center gap-1 text-xs font-bold text-teal-700 dark:text-teal-400 hover:underline"
+                >
+                  <IconPlus className="h-3.5 w-3.5" /> Add SKU
+                </button>
+              </div>
             </div>
 
             {/* Table headers */}
@@ -740,6 +797,15 @@ export const PurchaseOrders: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Barcode Scanner Camera Modal for PO */}
+      <BarcodeScannerModal
+        isOpen={isBarcodeScannerOpen}
+        onClose={() => setIsBarcodeScannerOpen(false)}
+        products={products}
+        onProductScanned={handleProductScannedPO}
+        title="PO Barcode Scanner"
+      />
     </div>
   );
 };
