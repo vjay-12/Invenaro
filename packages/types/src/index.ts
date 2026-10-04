@@ -174,3 +174,90 @@ export interface PurchaseOrderDTO {
   items: PurchaseOrderItemDTO[];
   created_at: string;
 }
+
+export type MeasurementFieldType = 'number' | 'text';
+export type MeasurementUnit = 'in' | 'cm';
+
+export interface MeasurementTemplateFieldDTO {
+  id: string;
+  template_id: string;
+  field_key: string;
+  field_name: string;
+  field_type: MeasurementFieldType;
+  default_unit: MeasurementUnit;
+  display_order: number;
+  is_required: boolean;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MeasurementTemplateDTO {
+  id: string;
+  name: string;
+  code: string;
+  description?: string | null;
+  category: string;
+  is_default: boolean;
+  is_active: boolean;
+  fields: MeasurementTemplateFieldDTO[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CustomerMeasurementValueDTO {
+  id?: string;
+  field_id: string;
+  field_key?: string;
+  field_name?: string;
+  numeric_value?: number | null;
+  text_value?: string | null;
+  unit: MeasurementUnit;
+  notes?: string | null;
+}
+
+export interface CustomerMeasurementVersionDTO {
+  id: string;
+  profile_id: string;
+  version_number: number;
+  measured_at: string;
+  measured_by?: string | null;
+  notes?: string | null;
+  is_current: boolean;
+  values: CustomerMeasurementValueDTO[];
+  created_at: string;
+}
+
+export interface CustomerMeasurementProfileDTO {
+  id: string;
+  customer_id: string;
+  template_id: string;
+  template_name?: string;
+  template_code?: string;
+  profile_name: string;
+  notes?: string | null;
+  is_active: boolean;
+  current_version?: CustomerMeasurementVersionDTO | null;
+  total_versions?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupplierDTO {
+  id: string;
+  name: string;
+  contact_person?: string | null;
+  category?: string | null;
+  notes?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  state_code?: string | null;
+  gstin?: string | null;
+  opening_balance: number;
+  is_active: boolean;
+  purchase_orders_count?: number;
+  created_at: string;
+  updated_at?: string;
+}
+

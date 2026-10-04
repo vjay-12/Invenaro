@@ -803,6 +803,67 @@ export const api = {
   getCustomerOrders: async (id: string) =>
     fetchWithFallback<any>(`/customers/${id}/orders`),
 
+  // Boutique: Measurement Templates
+  getMeasurementTemplates: async (category?: string, includeInactive?: boolean) => {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    if (includeInactive) params.append('include_inactive', 'true');
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetchWithFallback<any>(`/measurement-templates${qs}`);
+    if (Array.isArray(res)) return res;
+    if (res?.templates && Array.isArray(res.templates)) return res.templates;
+    return [];
+  },
+  createMeasurementTemplate: async (data: any) =>
+    fetchWithFallback<any>('/measurement-templates', { method: 'POST', body: JSON.stringify(data) }),
+  updateMeasurementTemplate: async (id: string, data: any) =>
+    fetchWithFallback<any>(`/measurement-templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  addMeasurementTemplateField: async (templateId: string, data: any) =>
+    fetchWithFallback<any>(`/measurement-templates/${templateId}/fields`, { method: 'POST', body: JSON.stringify(data) }),
+  updateMeasurementTemplateField: async (templateId: string, fieldId: string, data: any) =>
+    fetchWithFallback<any>(`/measurement-templates/${templateId}/fields/${fieldId}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Boutique: Customer Measurements
+  getCustomerMeasurementProfiles: async (customerId: string) => {
+    const res = await fetchWithFallback<any>(`/customers/${customerId}/measurements`);
+    if (Array.isArray(res)) return res;
+    if (res?.profiles && Array.isArray(res.profiles)) return res.profiles;
+    return [];
+  },
+  getCustomerMeasurementProfile: async (customerId: string, profileId: string) =>
+    fetchWithFallback<any>(`/customers/${customerId}/measurements/${profileId}`),
+  createCustomerMeasurementProfile: async (customerId: string, data: any) =>
+    fetchWithFallback<any>(`/customers/${customerId}/measurements`, { method: 'POST', body: JSON.stringify(data) }),
+  addCustomerMeasurementVersion: async (customerId: string, profileId: string, data: any) =>
+    fetchWithFallback<any>(`/customers/${customerId}/measurements/${profileId}/versions`, { method: 'POST', body: JSON.stringify(data) }),
+  updateCustomerMeasurementProfile: async (customerId: string, profileId: string, data: any) =>
+    fetchWithFallback<any>(`/customers/${customerId}/measurements/${profileId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getCustomerMeasurementHistory: async (customerId: string, profileId: string) => {
+    const res = await fetchWithFallback<any>(`/customers/${customerId}/measurements/${profileId}/history`);
+    if (Array.isArray(res)) return res;
+    if (res?.versions && Array.isArray(res.versions)) return res.versions;
+    return [];
+  },
+
+  // Boutique: Vendors (Suppliers)
+  getVendors: async (search?: string, category?: string, statusFilter?: string) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (category && category !== 'all') params.append('category', category);
+    if (statusFilter && statusFilter !== 'all') params.append('status_filter', statusFilter);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetchWithFallback<any>(`/vendors${qs}`);
+    if (Array.isArray(res)) return res;
+    if (res?.suppliers && Array.isArray(res.suppliers)) return res.suppliers;
+    return [];
+  },
+  createVendor: async (data: any) =>
+    fetchWithFallback<any>('/vendors', { method: 'POST', body: JSON.stringify(data) }),
+  updateVendor: async (id: string, data: any) =>
+    fetchWithFallback<any>(`/vendors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  archiveVendor: async (id: string) =>
+    fetchWithFallback<any>(`/vendors/${id}/archive`, { method: 'POST' }),
+
   // Transfers
   getTransfers: async () => fetchWithFallback<any[]>('/transfers/'),
   createTransfer: async (data: any) =>

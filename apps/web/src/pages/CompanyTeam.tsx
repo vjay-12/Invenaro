@@ -26,6 +26,7 @@ import {
   IconChevronRight,
   IconPackage,
   IconCopy,
+  IconSlidersHorizontal,
 } from '../components/icons';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -36,10 +37,12 @@ import { Modal } from '../components/common/Modal';
 import { Pagination } from '../components/common/Pagination';
 import { StateSelectDropdown } from '../components/common/StateSelectDropdown';
 import { TabType } from '../components/layout/Sidebar';
+import { CustomerMeasurementsTab } from '../components/boutique/CustomerMeasurementsTab';
+import { VendorsTab } from '../components/boutique/VendorsTab';
 
 interface CompanyTeamProps {
   onNavigate?: (tab: TabType, params?: Record<string, string>) => void;
-  initialTab?: 'customers' | 'team';
+  initialTab?: 'customers' | 'vendors' | 'team';
 }
 
 const GRANULAR_PERMISSIONS = [
@@ -60,10 +63,14 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
   ];
   const isTeamEnabled = enabledModules.includes('team') || user?.role === 'super_admin';
 
-  // Active Main Tab: 'customers' (first/default) vs 'team' (existing Team & Roles)
-  const [activeMainTab, setActiveMainTab] = useState<'customers' | 'team'>(() => {
+  // Active Main Tab: 'customers' (first/default) vs 'vendors' vs 'team' (existing Team & Roles)
+  const [activeMainTab, setActiveMainTab] = useState<'customers' | 'vendors' | 'team'>(() => {
+    if (initialTab === 'vendors') return 'vendors';
     return initialTab === 'team' && isTeamEnabled ? 'team' : 'customers';
   });
+
+  // Modal 3 Internal Tab: 'measurements' | 'orders' | 'details'
+  const [customerDetailTab, setCustomerDetailTab] = useState<'measurements' | 'orders' | 'details'>('measurements');
 
   useEffect(() => {
     if (initialTab === 'team') {
@@ -75,6 +82,8 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
       }
     } else if (initialTab === 'customers') {
       setActiveMainTab('customers');
+    } else if (initialTab === 'vendors') {
+      setActiveMainTab('vendors');
     }
   }, [initialTab, isTeamEnabled]);
 
@@ -689,6 +698,11 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
                   <IconBuilding className="w-3 h-3" />
                   <span>Commercial Customer Directory</span>
                 </>
+              ) : activeMainTab === 'vendors' ? (
+                <>
+                  <IconBuilding className="w-3 h-3" />
+                  <span>Boutique Suppliers & Vendor Directory</span>
+                </>
               ) : (
                 <>
                   <IconShieldCheck className="w-3 h-3" />
@@ -699,7 +713,9 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl truncate sm:whitespace-normal">
             {activeMainTab === 'customers'
-              ? 'Commercial customer accounts, GSTIN details, billing addresses, and sales order history.'
+              ? 'Commercial customer accounts, tailoring measurements, billing addresses, and sales order history.'
+              : activeMainTab === 'vendors'
+              ? 'Boutique suppliers, fabric mills, trim wholesalers, and purchase order linkages.'
               : 'Enterprise team members, role designations, granular RBAC permissions, and access credentials.'}
           </p>
         </div>
@@ -714,24 +730,22 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
               <IconPlus className="w-3.5 h-3.5" />
               <span>Add Customer</span>
             </button>
-          ) : (
-            isAdmin && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsAddModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-subtle transition-colors"
-              >
-                <IconUserPlus className="w-3.5 h-3.5" />
-                <span>Add Team Member</span>
-              </button>
-            )
-          )}
+          ) : activeMainTab === 'team' && isAdmin ? (
+            <button
+              type="button"
+              onClick={() => {
+                setIsAddModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-subtle transition-colors"
+            >
+              <IconUserPlus className="w-3.5 h-3.5" />
+              <span>Add Team Member</span>
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {/* Primary Tab Switcher: "Customers" & "Teams & Roles" */}
+      {/* Primary Tab Switcher: "Customers", "Vendors", & "Teams & Roles" */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
         <button
           type="button"
@@ -756,6 +770,23 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
           >
             {Array.isArray(customers) ? customers.length : 0}
           </span>
+        </button>
+
+        {/* Vendors Tab */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveMainTab('vendors');
+            onNavigate?.('vendors' as any);
+          }}
+          className={`flex items-center gap-2.5 px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+            activeMainTab === 'vendors'
+              ? 'border-teal-600 text-teal-700 dark:text-teal-400 bg-teal-50/50 dark:bg-teal-950/20'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300'
+          }`}
+        >
+          <IconBuilding className="w-4 h-4" />
+          <span>Vendors & Suppliers</span>
         </button>
 
         {isTeamEnabled && (
@@ -891,9 +922,12 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
                   paginatedCustomers.map((c) => (
                     <tr
                       key={c.id}
-                      onClick={() => handleOpenCustomerOrders(c)}
+                      onClick={() => {
+                        setCustomerDetailTab('measurements');
+                        handleOpenCustomerOrders(c);
+                      }}
                       className="h-[52px] cursor-pointer hover:bg-slate-50 dark:hover:bg-[#161D2B] transition-colors group"
-                      title="Click to view complete sales order history"
+                      title="Click to view tailoring measurements & sales history"
                     >
                       {/* Customer Name */}
                       <td className="py-2.5 px-3 overflow-hidden align-middle">
@@ -989,6 +1023,20 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
                         <div className="inline-flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCustomerDetailTab('measurements');
+                              handleOpenCustomerOrders(c);
+                            }}
+                            className="p-1 rounded text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors"
+                            title="Boutique Tailoring Measurements"
+                            aria-label="Measurements"
+                          >
+                            <IconSlidersHorizontal className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={(e) => handleOpenEditCustomerModal(c, e)}
                             className="p-1 rounded text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                             title="Edit customer details"
@@ -1043,7 +1091,14 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
       )}
 
       {/* =================================================================== */}
-      {/* TAB 2: TEAM MEMBERS TABLE & WORKFLOWS (EXISTING CODE PRESERVED) */}
+      {/* TAB 2: VENDORS & SUPPLIERS DIRECTORY */}
+      {/* =================================================================== */}
+      {activeMainTab === 'vendors' && (
+        <VendorsTab />
+      )}
+
+      {/* =================================================================== */}
+      {/* TAB 3: TEAM MEMBERS TABLE & WORKFLOWS (EXISTING CODE PRESERVED) */}
       {/* =================================================================== */}
       {activeMainTab === 'team' && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] shadow-card">
@@ -1589,12 +1644,74 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
             setSelectedCustomerForOrders(null);
             setHoveredOrderPopover(null);
           }}
-          title={selectedCustomerForOrders.legalName}
-          subtitle={`Commercial Account • ${selectedCustomerForOrders.billingState || 'Karnataka'} • Lifetime Sales Order Ledger`}
+          title={selectedCustomerForOrders.legalName || selectedCustomerForOrders.name}
+          subtitle={
+            customerDetailTab === 'measurements'
+              ? 'Boutique Tailoring Profiles • Standard & Custom Measurements'
+              : customerDetailTab === 'orders'
+              ? `Commercial Account • ${selectedCustomerForOrders.billingState || 'Karnataka'} • Lifetime Sales Order Ledger`
+              : 'Client Account Details, GSTIN, and Delivery Addresses'
+          }
           maxWidth="4xl"
         >
           <div className="space-y-4">
-            {/* Customer Summary Bar */}
+            {/* Modal Internal Navigation: Measurements | Orders | Details */}
+            <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2.5">
+              <button
+                type="button"
+                onClick={() => setCustomerDetailTab('measurements')}
+                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
+                  customerDetailTab === 'measurements'
+                    ? 'bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <IconSlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Boutique Measurements</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCustomerDetailTab('orders')}
+                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
+                  customerDetailTab === 'orders'
+                    ? 'bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <IconFileText className="w-3.5 h-3.5" />
+                <span>Sales Orders & History</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                  {customerOrdersData?.total_orders ?? selectedCustomerForOrders.orderCount ?? 0}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCustomerDetailTab('details')}
+                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
+                  customerDetailTab === 'details'
+                    ? 'bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <IconUsers className="w-3.5 h-3.5" />
+                <span>Customer Profile & Contact</span>
+              </button>
+            </div>
+
+            {/* TAB 1: BOUTIQUE MEASUREMENTS */}
+            {customerDetailTab === 'measurements' && (
+              <CustomerMeasurementsTab
+                customerId={selectedCustomerForOrders.id}
+                customerName={selectedCustomerForOrders.legalName || selectedCustomerForOrders.name || 'Customer'}
+              />
+            )}
+
+            {/* TAB 2: ORDERS & LEDGER */}
+            {customerDetailTab === 'orders' && (
+              <div className="space-y-4">
+                {/* Customer Summary Bar */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#0C1017]">
               <div>
                 <span className="text-[10px] font-mono uppercase tracking-wider text-slate-600 dark:text-slate-400 font-bold block">
@@ -1754,6 +1871,75 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+            {/* TAB 3: CUSTOMER PROFILE & CONTACT DETAILS */}
+            {customerDetailTab === 'details' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#0C1017]">
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold block">
+                      Legal Business / Customer Name
+                    </span>
+                    <span className="text-sm font-bold text-slate-900 dark:text-white block mt-0.5">
+                      {selectedCustomerForOrders.legalName || selectedCustomerForOrders.name}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold block">
+                      Tax Registration / GSTIN
+                    </span>
+                    <span className="text-sm font-bold text-slate-800 dark:text-slate-200 font-mono block mt-0.5">
+                      {selectedCustomerForOrders.gstin || 'Consumer / Unregistered'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold block">
+                      Contact Phone
+                    </span>
+                    <span className="text-xs font-mono font-medium text-slate-800 dark:text-slate-200 block mt-0.5">
+                      {selectedCustomerForOrders.phone || 'No phone recorded'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold block">
+                      Email Address
+                    </span>
+                    <span className="text-xs font-medium text-slate-800 dark:text-slate-200 block mt-0.5">
+                      {selectedCustomerForOrders.email || 'No email recorded'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924]">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold block mb-1">
+                      Billing Address
+                    </span>
+                    <p className="text-xs text-slate-700 dark:text-slate-300">
+                      {selectedCustomerForOrders.billingAddress || 'No billing address recorded'}
+                    </p>
+                    <div className="text-[11px] text-teal-600 dark:text-teal-400 font-mono mt-2">
+                      State: {selectedCustomerForOrders.billingState || 'Karnataka'}{' '}
+                      {selectedCustomerForOrders.billingStateCode ? `(${selectedCustomerForOrders.billingStateCode})` : ''}
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924]">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold block mb-1">
+                      Shipping / Delivery Address
+                    </span>
+                    <p className="text-xs text-slate-700 dark:text-slate-300">
+                      {selectedCustomerForOrders.shippingAddress || selectedCustomerForOrders.billingAddress || 'Same as billing address'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </Modal>
       )}

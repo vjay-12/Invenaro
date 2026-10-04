@@ -112,6 +112,7 @@ const pathToTab: Record<string, TabType | '404'> = {
   '/settings': 'settings',
   '/team': 'team',
   '/customers': 'customers',
+  '/vendors': 'vendors',
   '/companies': 'companies',
   '/leads': 'leads',
   '/security-safeguards': 'safeguards',
@@ -140,6 +141,7 @@ const tabToPath: Record<string, string> = {
   settings: '/settings',
   team: '/team',
   customers: '/customers',
+  vendors: '/vendors',
   companies: '/companies',
   leads: '/leads',
   safeguards: '/security-safeguards',
@@ -432,6 +434,12 @@ const AppContent: React.FC = () => {
         return (
           <Suspense fallback={<DashboardSkeleton />}>
             <CompanyTeam initialTab="customers" onNavigate={(t, p) => navigateTo(t as any, p)} />
+          </Suspense>
+        );
+      case 'vendors':
+        return (
+          <Suspense fallback={<DashboardSkeleton />}>
+            <CompanyTeam initialTab="vendors" onNavigate={(t, p) => navigateTo(t as any, p)} />
           </Suspense>
         );
       case 'dashboard':

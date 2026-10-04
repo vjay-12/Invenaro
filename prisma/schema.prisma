@@ -190,9 +190,10 @@ model Customer {
   gstin        String?
   created_at   DateTime     @default(now())
   updated_at   DateTime     @updatedAt
-  invoices     Invoice[]
-  payments     Payment[]
-  sales_orders SalesOrder[]
+  invoices             Invoice[]
+  payments             Payment[]
+  sales_orders         SalesOrder[]
+  measurement_profiles CustomerMeasurementProfile[]
 
   @@map("customers")
 }
@@ -200,12 +201,16 @@ model Customer {
 model Supplier {
   id              String          @id @default(uuid())
   name            String
+  contact_person  String?
+  category        String?
+  notes           String?
   phone           String?
   email           String?
   address         String?
   state_code      String?
   gstin           String?
   opening_balance Decimal         @default(0) @db.Decimal(12, 2)
+  is_active       Boolean         @default(true)
   created_at      DateTime        @default(now())
   updated_at      DateTime        @updatedAt
   payments        Payment[]
@@ -444,4 +449,98 @@ enum TransferStatus {
   IN_TRANSIT
   RECEIVED
   CANCELLED
+}
+
+model MeasurementTemplate {
+  id          String                      @id @default(uuid())
+  name        String
+  code        String                      @unique
+  description String?
+  category    String                      @default("WOMEN")
+  is_default  Boolean                     @default(false)
+  is_active   Boolean                     @default(true)
+  created_at  DateTime                    @default(now())
+  updated_at  DateTime                    @updatedAt
+
+  fields      MeasurementTemplateField[]
+  profiles    CustomerMeasurementProfile[]
+
+  @@map("measurement_templates")
+}
+
+model MeasurementTemplateField {
+  id            String                    @id @default(uuid())
+  template_id   String
+  field_key     String
+  field_name    String
+  field_type    String                    @default("number")
+  default_unit  String                    @default("in")
+  display_order Int                       @default(0)
+  is_required   Boolean                   @default(false)
+  is_active     Boolean                   @default(true)
+  created_at    DateTime                  @default(now())
+  updated_at    DateTime                  @updatedAt
+
+  template      MeasurementTemplate       @relation(fields: [template_id], references: [id], onDelete: Cascade)
+  values        CustomerMeasurementValue[]
+
+  @@unique([template_id, field_key])
+  @@index([template_id, display_order])
+  @@map("measurement_template_fields")
+}
+
+model CustomerMeasurementProfile {
+  id            String                      @id @default(uuid())
+  customer_id   String
+  template_id   String
+  profile_name  String
+  notes         String?
+  is_active     Boolean                     @default(true)
+  created_at    DateTime                    @default(now())
+  updated_at    DateTime                    @updatedAt
+
+  customer      Customer                    @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  template      MeasurementTemplate         @relation(fields: [template_id], references: [id], onDelete: Restrict)
+  versions      CustomerMeasurementVersion[]
+
+  @@index([customer_id])
+  @@index([template_id])
+  @@map("customer_measurement_profiles")
+}
+
+model CustomerMeasurementVersion {
+  id             String                      @id @default(uuid())
+  profile_id     String
+  version_number Int                         @default(1)
+  measured_at    DateTime                    @default(now())
+  measured_by    String?
+  notes          String?
+  is_current     Boolean                     @default(true)
+  created_at     DateTime                    @default(now())
+
+  profile        CustomerMeasurementProfile  @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  values         CustomerMeasurementValue[]
+
+  @@index([profile_id, is_current])
+  @@index([profile_id, version_number])
+  @@map("customer_measurement_versions")
+}
+
+model CustomerMeasurementValue {
+  id            String                     @id @default(uuid())
+  version_id    String
+  field_id      String
+  numeric_value Decimal?                   @db.Decimal(8, 2)
+  text_value    String?
+  unit          String                     @default("in")
+  notes         String?
+  created_at    DateTime                   @default(now())
+
+  version       CustomerMeasurementVersion @relation(fields: [version_id], references: [id], onDelete: Cascade)
+  field         MeasurementTemplateField   @relation(fields: [field_id], references: [id], onDelete: Cascade)
+
+  @@unique([version_id, field_id])
+  @@index([version_id])
+  @@index([field_id])
+  @@map("customer_measurement_values")
 }

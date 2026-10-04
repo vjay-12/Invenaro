@@ -37,6 +37,7 @@ export type TabType =
   | 'billing'
   | 'team'
   | 'customers'
+  | 'vendors'
   | 'products'
   | 'ledger'
   | 'purchase_orders'
@@ -201,6 +202,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         label: 'Purchase Orders',
         icon: IconFileDown,
         badge: pendingPOCount > 0 ? `${pendingPOCount}` : undefined,
+      },
+      {
+        id: 'vendors' as TabType,
+        label: 'Vendors & Suppliers',
+        icon: IconBuilding,
       },
     ];
 

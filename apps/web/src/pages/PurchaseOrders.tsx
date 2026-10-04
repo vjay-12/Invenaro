@@ -12,7 +12,8 @@ import {
 } from '../components/icons';
 import { useInventory } from '../context/InventoryContext';
 import { useLicense } from '../context/LicenseContext';
-import { PurchaseOrder, POLineItem } from '../types/inventory';
+import { PurchaseOrder, POLineItem, Vendor } from '../types/inventory';
+import { api } from '../services/api';
 import { Modal } from '../components/common/Modal';
 import { PageMeta } from '../components/common/PageMeta';
 import { WarehouseSelectDropdown } from '../components/common/WarehouseSelectDropdown';
@@ -47,6 +48,14 @@ export const PurchaseOrders: React.FC = () => {
 
   // Create PO Form state
   const [supplierName, setSupplierName] = useState('');
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+
+  useEffect(() => {
+    api.getVendors().then((data) => {
+      if (Array.isArray(data)) setVendors(data);
+    }).catch(() => {});
+  }, [isCreateModalOpen]);
+
   const [targetLocationId, setTargetLocationId] = useState(
     selectedLocationId !== 'all' ? selectedLocationId : (locations[0]?.id || '')
   );
@@ -539,17 +548,32 @@ export const PurchaseOrders: React.FC = () => {
         <form onSubmit={handleSubmitPO} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Supplier / Vendor *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Supplier / Vendor *
+                </label>
+                {vendors.length > 0 && (
+                  <span className="text-[10px] text-teal-600 dark:text-teal-400 font-mono">
+                    {vendors.length} registered
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 required
+                list="registered-vendors-datalist"
                 value={supplierName}
                 onChange={(e) => setSupplierName(e.target.value)}
-                placeholder="e.g. Apex Industrial Supplies"
+                placeholder="Select or enter boutique vendor..."
                 className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#131924] px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-teal-600"
               />
+              <datalist id="registered-vendors-datalist">
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.name}>
+                    {v.category ? `${v.category}${v.contact_person ? ` • ${v.contact_person}` : ''}` : ''}
+                  </option>
+                ))}
+              </datalist>
             </div>
 
             <div>

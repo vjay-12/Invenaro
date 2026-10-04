@@ -291,3 +291,85 @@ export interface WebhookConfig {
 }
 
 export type CurrencyCode = 'USD' | 'EUR' | 'INR';
+
+// Boutique Measurement & Vendor Types
+export interface MeasurementTemplateField {
+  id: string;
+  template_id?: string;
+  name: string;
+  code: string;
+  field_type: 'numeric' | 'text';
+  default_unit?: string | null;
+  display_order: number;
+  is_required: boolean;
+  help_text?: string | null;
+  min_val?: number | null;
+  max_val?: number | null;
+  is_active: boolean;
+}
+
+export interface MeasurementTemplate {
+  id: string;
+  name: string;
+  code: string;
+  category?: string | null;
+  description?: string | null;
+  is_system: boolean;
+  is_active: boolean;
+  fields?: MeasurementTemplateField[];
+}
+
+export interface CustomerMeasurementValue {
+  id: string;
+  field_id?: string | null;
+  field_name: string;
+  field_code: string;
+  num_value?: number | null;
+  unit?: string | null;
+  text_value?: string | null;
+  notes?: string | null;
+  display_order: number;
+}
+
+export interface CustomerMeasurementVersion {
+  id: string;
+  profile_id: string;
+  version_number: number;
+  is_current: boolean;
+  measured_at: string;
+  measured_by?: string | null;
+  notes?: string | null;
+  values?: CustomerMeasurementValue[];
+}
+
+export interface CustomerMeasurementProfile {
+  id: string;
+  customer_id: string;
+  template_id?: string | null;
+  profile_name: string;
+  notes?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  template?: MeasurementTemplate | null;
+  current_version?: CustomerMeasurementVersion | null;
+  versions?: CustomerMeasurementVersion[];
+}
+
+export interface Vendor {
+  id: string;
+  name: string;
+  code?: string | null;
+  contact_person?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  category?: string | null;
+  notes?: string | null;
+  is_active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  _count?: {
+    purchase_orders?: number;
+  };
+}

@@ -122,3 +122,62 @@ export const godownSchema = z.object({
   gstin: z.string().optional().nullable(),
   is_default: z.boolean().default(false),
 });
+
+export const supplierSchema = z.object({
+  name: z.string().min(1, 'Vendor / Supplier name is required'),
+  contact_person: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  email: z.string().email().optional().nullable().or(z.literal('')),
+  address: z.string().optional().nullable(),
+  state_code: z.string().optional().nullable(),
+  gstin: z.string().optional().nullable(),
+  opening_balance: z.number().default(0),
+  is_active: z.boolean().default(true),
+});
+
+export const measurementTemplateFieldSchema = z.object({
+  id: z.string().optional(),
+  field_key: z.string().min(1, 'Field key is required'),
+  field_name: z.string().min(1, 'Field name is required'),
+  field_type: z.enum(['number', 'text']).default('number'),
+  default_unit: z.enum(['in', 'cm']).default('in'),
+  display_order: z.number().default(0),
+  is_required: z.boolean().default(false),
+  is_active: z.boolean().default(true),
+});
+
+export const measurementTemplateSchema = z.object({
+  name: z.string().min(1, 'Template name is required'),
+  code: z.string().min(1, 'Template code is required'),
+  description: z.string().optional().nullable(),
+  category: z.string().default('WOMEN'),
+  is_default: z.boolean().default(false),
+  fields: z.array(measurementTemplateFieldSchema).optional().default([]),
+});
+
+export const customerMeasurementValueSchema = z.object({
+  field_id: z.string().min(1, 'Field ID is required'),
+  numeric_value: z.number().nullable().optional(),
+  text_value: z.string().nullable().optional(),
+  unit: z.enum(['in', 'cm']).default('in'),
+  notes: z.string().nullable().optional(),
+});
+
+export const customerMeasurementProfileSchema = z.object({
+  template_id: z.string().min(1, 'Template is required'),
+  profile_name: z.string().min(1, 'Profile name is required'),
+  notes: z.string().nullable().optional(),
+  measured_by: z.string().nullable().optional(),
+  measured_at: z.string().optional(),
+  values: z.array(customerMeasurementValueSchema).optional().default([]),
+});
+
+export const customerMeasurementVersionSchema = z.object({
+  notes: z.string().nullable().optional(),
+  measured_by: z.string().nullable().optional(),
+  measured_at: z.string().optional(),
+  values: z.array(customerMeasurementValueSchema).min(1, 'At least one measurement value is required'),
+});
+

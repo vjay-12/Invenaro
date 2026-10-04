@@ -19,6 +19,8 @@ import ledgerRouter from './routes/ledger.js';
 import invoicesRouter from './routes/invoices.js';
 import reportsRouter from './routes/reports.js';
 import settingsRouter from './routes/settings.js';
+import measurementTemplatesRouter from './routes/measurementTemplates.js';
+import customerMeasurementsRouter from './routes/customerMeasurements.js';
 
 import { enforceLicenseState } from './middlewares/entitlements.js';
 
@@ -52,7 +54,11 @@ const mountRoutes = (prefix: string) => {
   app.use(`${prefix}/locations`, godownsRouter);
   app.use(`${prefix}/products`, productsRouter);
   app.use(`${prefix}/customers`, customersRouter);
+  app.use(`${prefix}/customers`, customerMeasurementsRouter);
+  app.use(`${prefix}/customer-measurements`, customerMeasurementsRouter);
+  app.use(`${prefix}/measurement-templates`, measurementTemplatesRouter);
   app.use(`${prefix}/suppliers`, suppliersRouter);
+  app.use(`${prefix}/vendors`, suppliersRouter);
   app.use(`${prefix}/sales-orders`, salesOrdersRouter);
   app.use(`${prefix}/orders/sales-orders`, salesOrdersRouter);
   app.use(`${prefix}/purchase-orders`, purchaseOrdersRouter);
