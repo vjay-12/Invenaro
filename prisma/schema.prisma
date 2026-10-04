@@ -203,10 +203,13 @@ model Supplier {
   name            String
   contact_person  String?
   category        String?
+  vendor_type     String?
   notes           String?
   phone           String?
   email           String?
   address         String?
+  city            String?
+  state           String?
   state_code      String?
   gstin           String?
   opening_balance Decimal         @default(0) @db.Decimal(12, 2)

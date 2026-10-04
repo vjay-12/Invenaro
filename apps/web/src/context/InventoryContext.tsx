@@ -362,7 +362,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               const mappedPOs: PurchaseOrder[] = backendPOs.map((bpo: any) => ({
                 id: bpo.id,
                 poNumber: bpo.po_number,
+                supplierId: bpo.supplier_id,
                 supplierName: bpo.supplier_name,
+                supplierPhone: bpo.supplier_phone,
+                supplierAddress: bpo.supplier_address,
+                supplierGstin: bpo.supplier_gstin,
                 status: bpo.status === 'completed' || bpo.status === 'RECEIVED' || bpo.status === 'received'
                   ? 'received'
                   : bpo.status === 'cancelled' || bpo.status === 'CANCELLED'
@@ -1074,7 +1078,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const locUuid = resolveLocationUuid(data.targetLocationId);
       const res = await api.createPurchaseOrder({
+        supplier_id: data.supplierId || (data as any).supplier_id,
         supplier_name: data.supplierName,
+        supplier_phone: data.supplierPhone,
+        supplier_address: data.supplierAddress,
+        supplier_gstin: data.supplierGstin,
         godown_id: locUuid,
         target_location_id: locUuid,
         order_date: data.orderDate,
@@ -1096,7 +1104,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const mappedCreatedPO: PurchaseOrder = {
           id: res.id,
           poNumber: res.po_number || newPO.poNumber,
+          supplierId: res.supplier_id || data.supplierId || (data as any).supplier_id,
           supplierName: res.supplier_name || data.supplierName,
+          supplierPhone: res.supplier_phone || data.supplierPhone,
+          supplierAddress: res.supplier_address || data.supplierAddress,
+          supplierGstin: res.supplier_gstin || data.supplierGstin,
           status: 'pending',
           targetLocationId: res.godown_id || data.targetLocationId,
           targetLocationName: res.godown?.name || data.targetLocationName,
@@ -1213,7 +1225,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const mapped = backendPOs.value.map((bpo: any) => ({
             id: bpo.id,
             poNumber: bpo.po_number,
+            supplierId: bpo.supplier_id,
             supplierName: bpo.supplier_name,
+            supplierPhone: bpo.supplier_phone,
+            supplierAddress: bpo.supplier_address,
+            supplierGstin: bpo.supplier_gstin,
             status: bpo.status === 'completed' || bpo.status === 'RECEIVED' || bpo.status === 'received'
               ? 'received'
               : bpo.status === 'cancelled' || bpo.status === 'CANCELLED'

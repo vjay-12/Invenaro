@@ -1,28 +1,31 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  IconBuilding,
   IconSearch,
   IconPlus,
+  IconRefreshCw,
   IconEdit,
   IconEye,
   IconArchive,
-  IconRefreshCw,
-  IconBuilding,
   IconPhone,
   IconMail,
   IconMapPin,
   IconCheckCircle2,
-} from '../icons';
-import { api } from '../../services/api';
-import { Vendor } from '../../types/inventory';
-import { VendorModal, VENDOR_TYPES } from './VendorModal';
-import { VendorDetailModal } from './VendorDetailModal';
-import { Pagination } from '../common/Pagination';
+  IconPackage,
+} from '../components/icons';
+import { api } from '../services/api';
+import { Vendor } from '../types/inventory';
+import { PageMeta } from '../components/common/PageMeta';
+import { Pagination } from '../components/common/Pagination';
+import { TabType } from '../components/layout/Sidebar';
+import { VendorModal, VENDOR_TYPES } from '../components/boutique/VendorModal';
+import { VendorDetailModal } from '../components/boutique/VendorDetailModal';
 
-interface VendorsTabProps {
-  onSelectVendorForPO?: (vendor: Vendor) => void;
+interface VendorsPageProps {
+  onNavigate?: (tab: TabType, params?: Record<string, string>) => void;
 }
 
-export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) => {
+export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,12 +35,19 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
   const [pageSize, setPageSize] = useState(10);
 
   // Modals state
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAddEditOpen, setIsAddEditOpen] = useState(false);
   const [vendorToEdit, setVendorToEdit] = useState<Vendor | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedVendorForDetail, setSelectedVendorForDetail] = useState<Vendor | null>(null);
 
-  const fetchVendors = async () => {
+  // Toast feedback
+  const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const loadVendors = async () => {
     setIsLoading(true);
     try {
       const data = await api.getVendors(
@@ -48,18 +58,19 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
       setVendors(Array.isArray(data) ? data : []);
     } catch (err: any) {
       console.error('Failed to load vendors:', err);
+      showToast(err.message || 'Failed to load vendors', 'error');
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchVendors();
+    loadVendors();
   }, [selectedType, statusFilter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchVendors();
+    loadVendors();
   };
 
   const handleToggleArchive = async (vendor: Vendor, e: React.MouseEvent) => {
@@ -67,12 +78,15 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
     try {
       if (vendor.is_active) {
         await api.archiveVendor(vendor.id);
+        showToast(`Vendor ${vendor.name} archived`);
       } else {
         await api.restoreVendor(vendor.id);
+        showToast(`Vendor ${vendor.name} reactivated`);
       }
-      fetchVendors();
+      loadVendors();
     } catch (err: any) {
-      console.error('Failed to toggle vendor status:', err);
+      console.error('Failed to update vendor status:', err);
+      showToast('Failed to update status', 'error');
     }
   };
 
@@ -81,12 +95,19 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
     setIsDetailOpen(true);
   };
 
-  const handleOpenEdit = (vendor: Vendor, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleOpenEdit = (vendor: Vendor, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setVendorToEdit(vendor);
-    setIsModalOpen(true);
+    setIsAddEditOpen(true);
   };
 
+  const handleCreatePOForVendor = (vendor: Vendor) => {
+    if (onNavigate) {
+      onNavigate('purchase_orders', { vendorId: vendor.id, vendorName: vendor.name });
+    }
+  };
+
+  // Client-side quick filter
   const filteredVendors = useMemo(() => {
     if (!searchQuery.trim()) return vendors;
     const q = searchQuery.toLowerCase();
@@ -108,76 +129,123 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
     setCurrentPage(1);
   }, [searchQuery, selectedType, statusFilter]);
 
-  const start = (currentPage - 1) * pageSize;
-  const paginatedVendors = filteredVendors.slice(start, start + pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedVendors = filteredVendors.slice(startIndex, startIndex + pageSize);
 
   return (
-    <div className="space-y-4">
-      {/* Header & Filter Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        {/* Search & Category Filter */}
-        <div className="flex flex-1 items-center gap-2 max-w-2xl flex-wrap sm:flex-nowrap">
-          <form onSubmit={handleSearchSubmit} className="relative flex-1 min-w-[200px]">
-            <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search vendor name, phone, email, GSTIN, city..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-600"
-            />
-          </form>
+    <div className="space-y-6 animate-in fade-in duration-150">
+      <PageMeta
+        title="Vendors | Invenaro Boutique IMS"
+        description="Manage boutique suppliers, fabric mills, trim wholesalers, and purchase order linkages."
+        canonicalPath="/vendors"
+      />
 
-          <select
-            value={selectedType}
-            onChange={(e) => setSelectedType(e.target.value)}
-            className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-teal-600"
-          >
-            <option value="All Types">All Types</option>
-            {VENDOR_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div
+          className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-card text-xs font-semibold animate-in slide-in-from-bottom-2 ${
+            toastMessage.type === 'error'
+              ? 'bg-rose-600 text-white'
+              : 'bg-teal-700 text-white'
+          }`}
+        >
+          <span>{toastMessage.text}</span>
+        </div>
+      )}
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-teal-600"
-          >
-            <option value="active">Active Only</option>
-            <option value="archived">Archived</option>
-            <option value="all">All Statuses</option>
-          </select>
-
-          <button
-            type="button"
-            onClick={fetchVendors}
-            className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
-            title="Refresh vendors list"
-          >
-            <IconRefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20">
+              <IconBuilding className="w-5 h-5" />
+            </div>
+            <span>Vendors</span>
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Boutique suppliers, fabric mills, trim wholesalers, and purchase order linkages.
+          </p>
         </div>
 
-        {/* Add Vendor Button */}
         <button
           type="button"
           onClick={() => {
             setVendorToEdit(null);
-            setIsModalOpen(true);
+            setIsAddEditOpen(true);
           }}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-subtle transition-colors shrink-0"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-subtle transition-colors shrink-0 self-start sm:self-auto"
         >
-          <IconPlus className="w-3.5 h-3.5" />
+          <IconPlus className="w-4 h-4" />
           <span>Add Vendor</span>
         </button>
       </div>
 
-      {/* Vendors Table */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
+      {/* Vendor Table Card */}
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] shadow-card">
+        {/* Filter & Search Bar */}
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <form onSubmit={handleSearchSubmit} className="relative w-full sm:w-80">
+            <IconSearch className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search vendors by name, phone, email, GSTIN..."
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#0C1017] pl-8 pr-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:border-teal-500 transition-colors"
+            />
+          </form>
+
+          <div className="flex items-center gap-2.5 self-end sm:self-auto flex-wrap">
+            {/* Vendor Type Filter Dropdown */}
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#0C1017] px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-teal-500"
+            >
+              <option value="All Types">All Types</option>
+              {VENDOR_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+
+            {/* Status Filter Pills */}
+            <div className="flex items-center gap-1 text-xs font-semibold">
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'active', label: 'Active' },
+                { id: 'archived', label: 'Archived' },
+              ].map((pill) => (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() => setStatusFilter(pill.id as any)}
+                  className={`rounded-lg px-2.5 py-1 text-xs transition-colors ${
+                    statusFilter === pill.id
+                      ? 'bg-teal-700 text-white font-bold shadow-subtle'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Sync Button */}
+            <button
+              type="button"
+              onClick={loadVendors}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#0C1017] hover:bg-slate-200 dark:hover:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 transition-colors"
+            >
+              <IconRefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Sync</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Vendors Table */}
+        <div className="overflow-x-auto w-full">
           <table className="w-full text-left text-xs table-fixed min-w-[850px]">
             <thead className="border-b border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#0C1017] text-[10px] font-mono uppercase tracking-wider text-slate-600 dark:text-slate-400">
               <tr>
@@ -197,19 +265,34 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
                   <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
                     <div className="flex items-center justify-center gap-2">
                       <IconRefreshCw className="w-4 h-4 animate-spin text-teal-600" />
-                      <span>Loading vendors...</span>
+                      <span>Loading vendors directory...</span>
                     </div>
                   </td>
                 </tr>
               ) : paginatedVendors.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
-                    <div className="space-y-1">
+                    <div className="max-w-xs mx-auto space-y-2">
                       <IconBuilding className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
                       <p className="font-semibold text-slate-700 dark:text-slate-300">No vendors found</p>
-                      <p className="text-[11px] text-slate-400">
-                        Add boutique fabric mills, trim wholesalers, and accessory suppliers.
+                      <p className="text-[11px] text-slate-500">
+                        {searchQuery
+                          ? 'Try adjusting your search criteria or category filter.'
+                          : 'Add your boutique fabric suppliers, lace mills, and button wholesalers.'}
                       </p>
+                      {!searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVendorToEdit(null);
+                            setIsAddEditOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-colors"
+                        >
+                          <IconPlus className="w-3.5 h-3.5" />
+                          <span>Add Vendor</span>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -219,16 +302,16 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
                     key={vendor.id}
                     onClick={() => handleOpenDetail(vendor)}
                     className="h-[52px] cursor-pointer hover:bg-slate-50 dark:hover:bg-[#161D2B] transition-colors group"
-                    title="Click to view full vendor profile"
+                    title="Click to view full vendor profile and purchase history"
                   >
-                    {/* Name */}
+                    {/* Vendor Name */}
                     <td className="py-2.5 px-3 overflow-hidden align-middle">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-teal-500/10 text-teal-700 dark:text-teal-400 font-bold text-xs border border-teal-500/20">
                           {vendor.name.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="font-bold text-slate-900 dark:text-white truncate group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                          <div className="font-bold text-slate-900 dark:text-white truncate group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" title={vendor.name}>
                             {vendor.name}
                           </div>
                           {vendor.code && (
@@ -259,9 +342,9 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
                       </span>
                     </td>
 
-                    {/* Location */}
+                    {/* Location (City, State) */}
                     <td className="py-2.5 px-2.5 overflow-hidden align-middle">
-                      <div className="text-slate-700 dark:text-slate-300 text-[11px] truncate">
+                      <div className="text-slate-700 dark:text-slate-300 text-[11px] truncate" title={vendor.address || `${vendor.city || ''} ${vendor.state || ''}`}>
                         {vendor.city ? `${vendor.city}${vendor.state ? `, ${vendor.state}` : ''}` : (vendor.state || vendor.address || '—')}
                       </div>
                     </td>
@@ -303,7 +386,7 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
                             handleOpenDetail(vendor);
                           }}
                           className="p-1.5 rounded text-slate-500 hover:text-teal-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          title="View vendor details & POs"
+                          title="View vendor details & purchase orders"
                         >
                           <IconEye className="w-3.5 h-3.5" />
                         </button>
@@ -354,11 +437,11 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
       </div>
 
       {/* Add / Edit Vendor Modal */}
-      {isModalOpen && (
+      {isAddEditOpen && (
         <VendorModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          onSaved={fetchVendors}
+          isOpen={isAddEditOpen}
+          onClose={() => setIsAddEditOpen(false)}
+          onSaved={loadVendors}
           vendorToEdit={vendorToEdit}
         />
       )}
@@ -371,11 +454,12 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
           vendor={selectedVendorForDetail}
           onEdit={(vend) => {
             setVendorToEdit(vend);
-            setIsModalOpen(true);
+            setIsAddEditOpen(true);
           }}
-          onCreatePO={onSelectVendorForPO}
+          onCreatePO={handleCreatePOForVendor}
         />
       )}
     </div>
   );
 };
+export default Vendors;

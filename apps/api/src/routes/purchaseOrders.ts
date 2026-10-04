@@ -68,7 +68,7 @@ router.post('/', async (req, res): Promise<void> => {
       return;
     }
 
-    const {
+    let {
       supplier_id,
       supplier_name,
       supplier_phone,
@@ -80,6 +80,33 @@ router.post('/', async (req, res): Promise<void> => {
       notes,
       items,
     } = parse.data;
+
+    // Connect PO to Vendor record cleanly
+    if (supplier_id) {
+      const vendor = await prisma.supplier.findUnique({ where: { id: supplier_id } }).catch(() => null);
+      if (vendor) {
+        supplier_name = supplier_name || vendor.name;
+        supplier_phone = supplier_phone || vendor.phone;
+        supplier_address = supplier_address || vendor.address;
+        supplier_gstin = supplier_gstin || vendor.gstin;
+      }
+    } else if (supplier_name) {
+      const vendor = await prisma.supplier.findFirst({
+        where: {
+          OR: [
+            { id: supplier_name },
+            { name: { equals: supplier_name, mode: 'insensitive' } },
+          ],
+        },
+      }).catch(() => null);
+      if (vendor) {
+        supplier_id = vendor.id;
+        supplier_name = vendor.name;
+        supplier_phone = supplier_phone || vendor.phone;
+        supplier_address = supplier_address || vendor.address;
+        supplier_gstin = supplier_gstin || vendor.gstin;
+      }
+    }
 
     let targetGodownId = godown_id;
     if (targetGodownId) {

@@ -10,13 +10,20 @@ router.use(authMiddleware);
 router.get('/', async (req, res): Promise<void> => {
   try {
     const search = req.query.search as string | undefined;
-    const category = req.query.category as string | undefined;
-    const status = req.query.status as string | undefined;
+    const typeFilter = (req.query.vendor_type || req.query.category) as string | undefined;
+    const status = (req.query.status || req.query.status_filter) as string | undefined;
 
     const suppliers = await prisma.supplier.findMany({
       where: {
         ...(status === 'archived' ? { is_active: false } : status === 'all' ? {} : { is_active: true }),
-        ...(category && category !== 'all' ? { category } : {}),
+        ...(typeFilter && typeFilter !== 'all' && typeFilter !== 'All Types' && typeFilter !== 'All Categories'
+          ? {
+              OR: [
+                { category: typeFilter },
+                { vendor_type: typeFilter },
+              ],
+            }
+          : {}),
         ...(search
           ? {
               OR: [
@@ -25,6 +32,11 @@ router.get('/', async (req, res): Promise<void> => {
                 { email: { contains: search, mode: 'insensitive' } },
                 { phone: { contains: search, mode: 'insensitive' } },
                 { gstin: { contains: search, mode: 'insensitive' } },
+                { city: { contains: search, mode: 'insensitive' } },
+                { state: { contains: search, mode: 'insensitive' } },
+                { address: { contains: search, mode: 'insensitive' } },
+                { category: { contains: search, mode: 'insensitive' } },
+                { vendor_type: { contains: search, mode: 'insensitive' } },
               ],
             }
           : {}),
@@ -41,11 +53,14 @@ router.get('/', async (req, res): Promise<void> => {
       id: s.id,
       name: s.name,
       contact_person: s.contact_person,
-      category: s.category || 'General',
+      category: s.category || s.vendor_type || 'Fabric Supplier',
+      vendor_type: s.vendor_type || s.category || 'Fabric Supplier',
       notes: s.notes,
       phone: s.phone,
       email: s.email,
       address: s.address,
+      city: s.city,
+      state: s.state,
       state_code: s.state_code,
       gstin: s.gstin,
       opening_balance: Number(s.opening_balance),
@@ -69,10 +84,14 @@ router.get('/:id', async (req, res): Promise<void> => {
       where: { id: req.params.id },
       include: {
         purchase_orders: {
-          take: 10,
           orderBy: { order_date: 'desc' },
           include: {
-            items: true,
+            godown: true,
+            items: {
+              include: {
+                product: true,
+              },
+            },
           },
         },
         _count: {
@@ -88,6 +107,8 @@ router.get('/:id', async (req, res): Promise<void> => {
 
     res.json({
       ...supplier,
+      category: supplier.category || supplier.vendor_type || 'Fabric Supplier',
+      vendor_type: supplier.vendor_type || supplier.category || 'Fabric Supplier',
       opening_balance: Number(supplier.opening_balance),
       purchase_orders_count: supplier._count.purchase_orders,
       purchase_orders: supplier.purchase_orders.map((po) => ({
@@ -95,6 +116,14 @@ router.get('/:id', async (req, res): Promise<void> => {
         subtotal: Number(po.subtotal),
         tax_total: Number(po.tax_total),
         grand_total: Number(po.grand_total),
+        godown_name: po.godown?.name,
+        items: po.items.map((it) => ({
+          ...it,
+          quantity: Number(it.quantity),
+          unit_cost: Number(it.unit_cost),
+          product_name: it.product?.name,
+          sku: it.product?.sku,
+        })),
       })),
     });
   } catch (err) {
@@ -115,10 +144,13 @@ router.post('/', async (req, res): Promise<void> => {
       name,
       contact_person,
       category,
+      vendor_type,
       notes,
       phone,
       email,
       address,
+      city,
+      state,
       state_code,
       gstin,
       opening_balance,
@@ -129,11 +161,14 @@ router.post('/', async (req, res): Promise<void> => {
       data: {
         name,
         contact_person: contact_person || null,
-        category: category || 'Fabrics & Textiles',
+        category: category || vendor_type || 'Fabric Supplier',
+        vendor_type: vendor_type || category || 'Fabric Supplier',
         notes: notes || null,
         phone: phone || null,
         email: email || null,
         address: address || null,
+        city: city || null,
+        state: state || null,
         state_code: state_code || '33',
         gstin: gstin || null,
         opening_balance: opening_balance || 0,

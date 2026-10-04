@@ -849,7 +849,7 @@ export const api = {
   getVendors: async (search?: string, category?: string, statusFilter?: string) => {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
-    if (category && category !== 'all') params.append('category', category);
+    if (category && category !== 'all' && category !== 'All Types' && category !== 'All Categories') params.append('category', category);
     if (statusFilter && statusFilter !== 'all') params.append('status_filter', statusFilter);
     const qs = params.toString() ? `?${params.toString()}` : '';
     const res = await fetchWithFallback<any>(`/vendors${qs}`);
@@ -857,12 +857,15 @@ export const api = {
     if (res?.suppliers && Array.isArray(res.suppliers)) return res.suppliers;
     return [];
   },
+  getVendor: async (id: string) => fetchWithFallback<any>(`/vendors/${id}`),
   createVendor: async (data: any) =>
     fetchWithFallback<any>('/vendors', { method: 'POST', body: JSON.stringify(data) }),
   updateVendor: async (id: string, data: any) =>
     fetchWithFallback<any>(`/vendors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   archiveVendor: async (id: string) =>
     fetchWithFallback<any>(`/vendors/${id}/archive`, { method: 'POST' }),
+  restoreVendor: async (id: string) =>
+    fetchWithFallback<any>(`/vendors/${id}/restore`, { method: 'POST' }),
 
   // Transfers
   getTransfers: async () => fetchWithFallback<any[]>('/transfers/'),

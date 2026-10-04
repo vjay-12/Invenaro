@@ -248,10 +248,13 @@ export interface SupplierDTO {
   name: string;
   contact_person?: string | null;
   category?: string | null;
+  vendor_type?: string | null;
   notes?: string | null;
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  city?: string | null;
+  state?: string | null;
   state_code?: string | null;
   gstin?: string | null;
   opening_balance: number;
@@ -260,4 +263,6 @@ export interface SupplierDTO {
   created_at: string;
   updated_at?: string;
 }
+
+export type VendorDTO = SupplierDTO;
 

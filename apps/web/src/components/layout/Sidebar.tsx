@@ -179,6 +179,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         label: 'Customers',
         icon: IconUsers,
       },
+      {
+        id: 'vendors' as TabType,
+        label: 'Vendors',
+        icon: IconBuilding,
+      },
     ];
 
     if (hasModule('invoices_returns')) {
@@ -202,11 +207,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         label: 'Purchase Orders',
         icon: IconFileDown,
         badge: pendingPOCount > 0 ? `${pendingPOCount}` : undefined,
-      },
-      {
-        id: 'vendors' as TabType,
-        label: 'Vendors & Suppliers',
-        icon: IconBuilding,
       },
     ];
 

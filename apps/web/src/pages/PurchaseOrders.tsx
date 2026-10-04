@@ -47,7 +47,11 @@ export const PurchaseOrders: React.FC = () => {
   const selectedLocation = locations.find((l) => l.id === selectedLocationId);
 
   // Create PO Form state
+  const [selectedVendorId, setSelectedVendorId] = useState('');
   const [supplierName, setSupplierName] = useState('');
+  const [supplierPhone, setSupplierPhone] = useState('');
+  const [supplierAddress, setSupplierAddress] = useState('');
+  const [supplierGstin, setSupplierGstin] = useState('');
   const [vendors, setVendors] = useState<Vendor[]>([]);
 
   useEffect(() => {
@@ -55,6 +59,24 @@ export const PurchaseOrders: React.FC = () => {
       if (Array.isArray(data)) setVendors(data);
     }).catch(() => {});
   }, [isCreateModalOpen]);
+
+  const handleVendorSelect = (vendorId: string) => {
+    setSelectedVendorId(vendorId);
+    if (!vendorId) {
+      setSupplierName('');
+      setSupplierPhone('');
+      setSupplierAddress('');
+      setSupplierGstin('');
+      return;
+    }
+    const matched = vendors.find((v) => v.id === vendorId);
+    if (matched) {
+      setSupplierName(matched.name);
+      setSupplierPhone(matched.phone || '');
+      setSupplierAddress(matched.address || '');
+      setSupplierGstin(matched.gstin || '');
+    }
+  };
 
   const [targetLocationId, setTargetLocationId] = useState(
     selectedLocationId !== 'all' ? selectedLocationId : (locations[0]?.id || '')
@@ -160,7 +182,11 @@ export const PurchaseOrders: React.FC = () => {
     setIsSubmittingPO(true);
     try {
       await createPurchaseOrder({
+        supplierId: selectedVendorId || undefined,
         supplierName: supplierName.trim(),
+        supplierPhone: supplierPhone || undefined,
+        supplierAddress: supplierAddress || undefined,
+        supplierGstin: supplierGstin || undefined,
         targetLocationId: resolvedLocationId,
         targetLocationName: targetLoc?.name || 'Main Godown',
         orderDate,
@@ -170,7 +196,11 @@ export const PurchaseOrders: React.FC = () => {
       });
 
       setIsCreateModalOpen(false);
+      setSelectedVendorId('');
       setSupplierName('');
+      setSupplierPhone('');
+      setSupplierAddress('');
+      setSupplierGstin('');
       setPoNotes('');
       setTargetLocationId(selectedLocationId !== 'all' ? selectedLocationId : (locations[0]?.id || ''));
       setLineItems([{ productId: products[0]?.id || '', sku: products[0]?.sku || '', name: products[0]?.name || '', orderedQty: 20, receivedQty: 0, unitCost: products[0]?.costPrice || 50 }]);
@@ -550,7 +580,7 @@ export const PurchaseOrders: React.FC = () => {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Supplier / Vendor *
+                  Vendor / Supplier *
                 </label>
                 {vendors.length > 0 && (
                   <span className="text-[10px] text-teal-600 dark:text-teal-400 font-mono">
@@ -558,22 +588,34 @@ export const PurchaseOrders: React.FC = () => {
                   </span>
                 )}
               </div>
-              <input
-                type="text"
+              <select
                 required
-                list="registered-vendors-datalist"
-                value={supplierName}
-                onChange={(e) => setSupplierName(e.target.value)}
-                placeholder="Select or enter boutique vendor..."
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#131924] px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-teal-600"
-              />
-              <datalist id="registered-vendors-datalist">
+                value={selectedVendorId}
+                onChange={(e) => handleVendorSelect(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#131924] px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-teal-600 font-medium"
+              >
+                <option value="">Select Vendor ▼</option>
                 {vendors.map((v) => (
-                  <option key={v.id} value={v.name}>
-                    {v.category ? `${v.category}${v.contact_person ? ` • ${v.contact_person}` : ''}` : ''}
+                  <option key={v.id} value={v.id}>
+                    {v.name} ({v.vendor_type || v.category || 'Vendor'}{v.city ? `, ${v.city}` : ''})
                   </option>
                 ))}
-              </datalist>
+              </select>
+              {selectedVendorId && (
+                <div className="mt-1 text-[11px] text-teal-700 dark:text-teal-400 truncate">
+                  {(() => {
+                    const v = vendors.find((vend) => vend.id === selectedVendorId);
+                    if (!v) return null;
+                    const parts = [
+                      v.vendor_type || v.category,
+                      v.contact_person ? `Contact: ${v.contact_person}` : null,
+                      v.phone ? `Ph: ${v.phone}` : null,
+                      v.gstin ? `GSTIN: ${v.gstin}` : null,
+                    ].filter(Boolean);
+                    return parts.join(' • ');
+                  })()}
+                </div>
+              )}
             </div>
 
             <div>

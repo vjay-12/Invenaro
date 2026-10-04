@@ -79,7 +79,11 @@ export interface POLineItem {
 export interface PurchaseOrder {
   id: string;
   poNumber: string;
+  supplierId?: string | null;
   supplierName: string;
+  supplierPhone?: string | null;
+  supplierAddress?: string | null;
+  supplierGstin?: string | null;
   status: 'draft' | 'pending' | 'received' | 'cancelled';
   targetLocationId: string;
   targetLocationName: string;
@@ -364,9 +368,19 @@ export interface Vendor {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  state_code?: string | null;
+  gstin?: string | null;
   category?: string | null;
+  vendor_type?: string | null;
   notes?: string | null;
+  opening_balance?: number;
   is_active: boolean;
+  purchase_orders_count?: number;
+  purchase_orders?: any[];
+  created_at?: string;
+  updated_at?: string;
   createdAt?: string;
   updatedAt?: string;
   _count?: {

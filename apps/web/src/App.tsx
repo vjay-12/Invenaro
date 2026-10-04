@@ -45,6 +45,9 @@ const BillingManagement = React.lazy(() =>
 const CompanyTeam = React.lazy(() =>
   import('./pages/CompanyTeam').then((m) => ({ default: m.CompanyTeam }))
 );
+const Vendors = React.lazy(() =>
+  import('./pages/Vendors').then((m) => ({ default: m.Vendors }))
+);
 const Dashboard = React.lazy(() =>
   import('./pages/Dashboard').then((m) => ({ default: m.Dashboard }))
 );
@@ -439,7 +442,7 @@ const AppContent: React.FC = () => {
       case 'vendors':
         return (
           <Suspense fallback={<DashboardSkeleton />}>
-            <CompanyTeam initialTab="vendors" onNavigate={(t, p) => navigateTo(t as any, p)} />
+            <Vendors onNavigate={(t, p) => navigateTo(t as any, p)} />
           </Suspense>
         );
       case 'dashboard':
