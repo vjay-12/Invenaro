@@ -526,9 +526,111 @@ router.get('/:id', async (req, res): Promise<void> => {
       res.status(404).json({ error: 'Product not found' });
       return;
     }
-    res.json(product);
+    const catName = product.category?.name || 'General';
+    const totalStock = product.stock_balances.reduce((s, b) => s + Number(b.current_quantity), 0);
+    res.json({
+      ...product,
+      category: catName,
+      category_name: catName,
+      unit_of_measure: product.unit,
+      cost_price: Number(product.purchase_price),
+      purchase_price: Number(product.purchase_price),
+      sell_price: Number(product.sale_price),
+      sale_price: Number(product.sale_price),
+      tax_rate: Number(product.tax_rate),
+      gst_rate: Number(product.tax_rate),
+      reorder_point: Number(product.min_stock_level),
+      min_stock_level: Number(product.min_stock_level),
+      total_stock: totalStock,
+      current_stock: totalStock,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to get product' });
+  }
+});
+
+const handleUpdateProduct = async (req: any, res: any): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const body = req.body || {};
+
+    const updateData: any = {};
+    if (body.name !== undefined) updateData.name = body.name.trim();
+    if (body.description !== undefined) updateData.description = body.description;
+    if (body.category_id !== undefined) updateData.category_id = body.category_id;
+    if (body.unit !== undefined) updateData.unit = body.unit.trim();
+    if (body.sale_price !== undefined || body.sell_price !== undefined) {
+      updateData.sale_price = Number(body.sale_price !== undefined ? body.sale_price : body.sell_price);
+    }
+    if (body.purchase_price !== undefined || body.cost_price !== undefined) {
+      updateData.purchase_price = Number(body.purchase_price !== undefined ? body.purchase_price : body.cost_price);
+    }
+    if (body.hsn_code !== undefined) updateData.hsn_code = body.hsn_code;
+    if (body.tax_rate !== undefined || body.gst_rate !== undefined) {
+      updateData.tax_rate = Number(body.tax_rate !== undefined ? body.tax_rate : body.gst_rate);
+    }
+    if (body.min_stock_level !== undefined || body.reorder_point !== undefined) {
+      updateData.min_stock_level = Number(body.min_stock_level !== undefined ? body.min_stock_level : body.reorder_point);
+    }
+    if (body.is_active !== undefined || body.isActive !== undefined) {
+      updateData.is_active = Boolean(body.is_active !== undefined ? body.is_active : body.isActive);
+    }
+
+    const updated = await prisma.product.update({
+      where: { id },
+      data: updateData,
+      include: {
+        category: true,
+        stock_balances: { include: { godown: true } },
+      },
+    });
+
+    const catName = updated.category?.name || 'General';
+    const totalStock = updated.stock_balances.reduce((s, b) => s + Number(b.current_quantity), 0);
+
+    res.json({
+      ...updated,
+      category: catName,
+      category_name: catName,
+      unit_of_measure: updated.unit,
+      cost_price: Number(updated.purchase_price),
+      purchase_price: Number(updated.purchase_price),
+      sell_price: Number(updated.sale_price),
+      sale_price: Number(updated.sale_price),
+      tax_rate: Number(updated.tax_rate),
+      gst_rate: Number(updated.tax_rate),
+      reorder_point: Number(updated.min_stock_level),
+      min_stock_level: Number(updated.min_stock_level),
+      total_stock: totalStock,
+      current_stock: totalStock,
+    });
+  } catch (err: any) {
+    console.error('Update product error:', err);
+    if (err.code === 'P2025') {
+      res.status(404).json({ error: 'Product not found' });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to update product' });
+  }
+};
+
+router.put('/:id', handleUpdateProduct);
+router.patch('/:id', handleUpdateProduct);
+
+router.delete('/:id', async (req, res): Promise<void> => {
+  try {
+    const { id } = req.params;
+    await prisma.product.update({
+      where: { id },
+      data: { is_active: false },
+    });
+    res.json({ success: true, message: 'Product deactivated successfully' });
+  } catch (err: any) {
+    if (err.code === 'P2025') {
+      res.status(404).json({ error: 'Product not found' });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to delete product' });
   }
 });
 

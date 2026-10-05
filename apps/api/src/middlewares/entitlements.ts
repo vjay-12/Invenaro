@@ -4,7 +4,8 @@ import { LicenseService } from '../license/index.js';
 
 /**
  * Middleware enforcing that a specific feature module is licensed.
- * Returns 403 { error: "module_not_licensed", module } if not licensed.
+ * In local_boutique, all modules are enabled by default.
+ * Returns 403 { error: "module_not_licensed", module } only if explicitly disabled in mocked test environments.
  */
 export function requireModule(moduleName: ModuleKey) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -27,9 +28,8 @@ export function requireModule(moduleName: ModuleKey) {
 
 /**
  * Middleware enforcing operational license state.
- * In 'read_only' or 'unlicensed' state, blocks all mutating non-GET requests
- * with 403 { error: "license_read_only" }, while allowing GET/HEAD/OPTIONS
- * and auth endpoints (login, logout, change-password).
+ * In local_boutique standalone edition, all operations are fully permitted.
+ * The system never operates in read-only mode due to licensing.
  */
 export async function enforceLicenseState(
   req: Request,
@@ -62,7 +62,8 @@ export async function enforceLicenseState(
     const entitlements = await LicenseService.getEntitlements();
     const state = entitlements.state.state;
 
-    if (state === 'read_only' || state === 'unlicensed') {
+    // In local_boutique standalone edition, customer_id 'local_boutique' is never blocked by licensing
+    if (entitlements.customer_id !== 'local_boutique' && (state === 'read_only' || state === 'unlicensed')) {
       res.status(403).json({
         error: 'license_read_only',
         state,

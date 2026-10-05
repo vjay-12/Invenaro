@@ -21,18 +21,13 @@ interface LicenseContextType {
 const LicenseContext = createContext<LicenseContextType | undefined>(undefined);
 
 export const LicenseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [plan, setPlan] = useState<PlanType>(() => {
-    return (localStorage.getItem('invenza_license_plan') as PlanType) || 'basic';
-  });
-  const [modules, setModules] = useState<PlanModules>(() => {
-    const savedPlan = (localStorage.getItem('invenza_license_plan') as PlanType) || 'basic';
-    return DEFAULT_PLAN_MODULES[savedPlan] || DEFAULT_PLAN_MODULES.basic;
-  });
+  const [plan, setPlan] = useState<PlanType>('enterprise');
+  const [modules, setModules] = useState<PlanModules>(() => DEFAULT_PLAN_MODULES.enterprise);
   const [state, setState] = useState<LicenseOperationalState>('active');
   const [licenseExpiresAt, setLicenseExpiresAt] = useState<string | null>(null);
   const [graceEndsAt, setGraceEndsAt] = useState<string | null>(null);
   const [message, setMessage] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
 
   const refreshLicense = async () => {
     try {
@@ -40,15 +35,15 @@ export const LicenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const data = await api.getLicenseStatus();
       if (data && data.plan) {
         setPlan(data.plan);
-        setModules(data.modules || DEFAULT_PLAN_MODULES[data.plan as PlanType]);
-        setState(data.state || 'active');
+        setModules(data.modules || DEFAULT_PLAN_MODULES[data.plan as PlanType] || DEFAULT_PLAN_MODULES.enterprise);
+        setState('active');
         setLicenseExpiresAt(data.licenseExpiresAt || null);
         setGraceEndsAt(data.graceEndsAt || null);
-        setMessage(data.message || '');
-        localStorage.setItem('invenza_license_plan', data.plan);
+        setMessage('');
       }
-    } catch (e) {
-      console.warn('Could not retrieve license status, falling back to defaults:', e);
+    } catch {
+      // In local boutique standalone mode, defaults remain active
+      setState('active');
     } finally {
       setLoading(false);
     }
@@ -58,13 +53,13 @@ export const LicenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshLicense();
   }, []);
 
-  const hasModule = (moduleName: keyof PlanModules): boolean => {
-    return Boolean(modules[moduleName]);
+  const hasModule = (_moduleName: keyof PlanModules): boolean => {
+    return true; // All modules permanently unlocked in local boutique standalone
   };
 
-  const isReadOnly = state === 'read_only' || state === 'unlicensed';
-  const isGrace = state === 'grace';
-  const isUnlicensed = state === 'unlicensed';
+  const isReadOnly = false;
+  const isGrace = false;
+  const isUnlicensed = false;
 
   return (
     <LicenseContext.Provider
