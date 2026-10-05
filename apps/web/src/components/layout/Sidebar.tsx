@@ -298,7 +298,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="h-2 w-2 rounded-full bg-blue-500 dark:bg-blue-400 mt-0.5 shrink-0 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
             </div>
             <div className="text-[9px] font-mono tracking-widest text-slate-500 uppercase truncate">
-              {isSuperAdmin ? 'Master Platform' : user?.companyName || 'Multi-Godown Platform'}
+              {isSuperAdmin ? 'Master Platform' : user?.companyName || (isBasic ? 'Boutique Platform' : 'Multi-Godown Platform')}
             </div>
           </button>
 

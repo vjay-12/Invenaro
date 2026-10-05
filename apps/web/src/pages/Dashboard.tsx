@@ -28,7 +28,8 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { hasModule } = useLicense();
+  const { hasModule, plan } = useLicense();
+  const isBasic = plan === 'basic';
   const {
     products,
     ledger,
@@ -279,7 +280,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             className="flex items-center gap-1.5 rounded-lg bg-white dark:bg-[#161b26] border border-slate-200 dark:border-[#262c3a] hover:bg-slate-50 dark:hover:bg-[#1f2636] px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-[#a8abb4] transition-colors"
           >
             <IconPlus className="h-3.5 w-3.5 text-teal-600 dark:text-[#5dcaa5]" />
-            <span>Create Sales Order</span>
+            <span>{isBasic ? 'Create Bill / Order' : 'Create Sales Order'}</span>
           </button>
           <button
             type="button"

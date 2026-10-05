@@ -12,19 +12,19 @@ import { getLicenseCache, recordLicenseError, saveLicenseCache } from './cache.j
 import { getLicenseState, OperationalLicenseState } from './state.js';
 
 export const STANDALONE_BOUTIQUE_MODULES: PlanModulesMap = {
-  multi_godown: true,
-  transfers: true,
-  invoices_returns: true,
-  payments_dues: true,
-  stock_control: true,
+  multi_godown: false,
+  transfers: false,
+  invoices_returns: false,
+  payments_dues: false,
+  stock_control: false,
   gst: true,
-  ledger_ui: true,
-  reports_advanced: true,
-  import_export: true,
-  batch_expiry: true,
-  barcode: true,
-  ai_data_assistant: true,
-  ai_knowledge_assistant: true,
+  ledger_ui: false,
+  reports_advanced: false,
+  import_export: false,
+  batch_expiry: false,
+  barcode: false,
+  ai_data_assistant: false,
+  ai_knowledge_assistant: false,
 };
 
 export class LicenseService {
@@ -41,15 +41,15 @@ export class LicenseService {
     state: OperationalLicenseState;
     expires_at: string;
   }> {
-    // In local_boutique standalone edition: software operates fully unlocked
-    // with local PostgreSQL and no external license dependencies.
+    // In local_boutique standalone edition: operates in Basic view
+    // with local PostgreSQL, boutique tailoring measurements, and vendors.
     return {
       customer_id: 'local_boutique',
-      plan: 'enterprise',
+      plan: 'basic',
       modules: STANDALONE_BOUTIQUE_MODULES,
       state: {
         state: 'active',
-        message: 'Invenaro Local Boutique Edition - Standalone',
+        message: 'Invenaro Local Boutique Edition - Standalone Basic',
         isReadOnly: false,
         isFullAccess: true,
         graceEndsAt: null,
@@ -64,12 +64,12 @@ export class LicenseService {
 
   static async getStatus(): Promise<LicenseStatusDTO> {
     return {
-      plan: 'enterprise',
+      plan: 'basic',
       modules: STANDALONE_BOUTIQUE_MODULES,
       state: 'active',
       licenseExpiresAt: null,
       graceEndsAt: null,
-      message: 'Invenaro Local Boutique Edition - Standalone',
+      message: 'Invenaro Local Boutique Edition - Standalone Basic',
     };
   }
 

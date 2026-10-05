@@ -811,9 +811,9 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
               I
             </div>
             <div>
-              <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Invenza</span>
+              <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Invenaro</span>
               <span className="ml-2 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20 uppercase tracking-wider">
-                Enterprise Core
+                Boutique Basic
               </span>
             </div>
           </div>
@@ -821,11 +821,11 @@ export const Login: React.FC<LoginProps> = ({ isModal = false, onClose, onNaviga
           {/* Value Prop Header */}
           <div className="max-w-xl mb-12">
             <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight">
-              Enterprise Multi-Tenant Inventory & Ledger Engine.
+              Boutique Inventory & Tailoring Management.
             </h1>
             <p className="text-slate-600 dark:text-slate-400 text-sm mt-4 leading-relaxed">
-              Cryptographically verified movement auditing, multi-warehouse routing, and dual-state GST invoicing.
-              Sign in with your organization account below.
+              Custom tailoring measurements, boutique fabric supplier orders, and customer billing.
+              Sign in with your account below.
             </p>
           </div>
 

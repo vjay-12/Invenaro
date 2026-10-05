@@ -48,6 +48,7 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
   }, [refreshData, products.length, locations.length]);
   const license = useLicense();
   const isMultiGodown = license.hasModule('multi_godown');
+  const isBasic = license.plan === 'basic';
   const { user, applyTaxToSalesOrders, updateUserLocal } = useAuth();
   const [tenantTaxSetting, setTenantTaxSetting] = useState<boolean | null>(() => applyTaxToSalesOrders !== false);
 
@@ -601,13 +602,15 @@ export const CreateSalesOrderPage: React.FC<CreateSalesOrderPageProps> = ({ onNa
             className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-teal-700 dark:text-slate-400 dark:hover:text-teal-400 mb-2 transition-colors"
           >
             <IconArrowLeft className="h-3.5 w-3.5" />
-            <span>Back to Sales Orders</span>
+            <span>{isBasic ? 'Back to Orders & Bills' : 'Back to Sales Orders'}</span>
           </button>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Create Sales Order
+            {isBasic ? 'Create Bill / Order' : 'Create Sales Order'}
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Reserve warehouse inventory, allocate line items, configure customer destination, and preview real-time tax calculation.
+            {isBasic
+              ? 'Create customer bill, allocate items, and generate invoice.'
+              : 'Reserve warehouse inventory, allocate line items, configure customer destination, and preview real-time tax calculation.'}
           </p>
         </div>
 

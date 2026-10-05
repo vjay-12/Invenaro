@@ -23,6 +23,7 @@ import {
 } from '../components/icons';
 import { useInventory } from '../context/InventoryContext';
 import { useAuth } from '../context/AuthContext';
+import { useLicense } from '../context/LicenseContext';
 import { SalesOrder, Product, Invoice } from '../types/inventory';
 import { Modal } from '../components/common/Modal';
 import { PageMeta } from '../components/common/PageMeta';
@@ -49,6 +50,8 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
     taxConfig,
   } = useInventory();
   const { user, applyTaxToSalesOrders } = useAuth();
+  const { plan } = useLicense();
+  const isBasic = plan === 'basic';
   const effectiveEngine = (user as any)?.taxEngine || (user as any)?.tax_engine || taxConfig.taxType || 'GST';
   const isOrgTaxEnabled = effectiveEngine !== 'NONE' && applyTaxToSalesOrders !== false;
 
@@ -591,8 +594,8 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
   return (
     <div className="space-y-6 pb-8 font-sans">
       <PageMeta
-        title="Sales Orders & Invoices | Invenza Enterprise Inventory"
-        description="Unified Sales Orders, dynamic tax invoicing, customer fulfillment, and sequential audit trail management."
+        title={isBasic ? "Orders & Bills | Invenaro" : "Sales Orders & Invoices | Invenaro"}
+        description={isBasic ? "Customer orders, instant billing, and dispatch." : "Unified Sales Orders, dynamic tax invoicing, customer fulfillment, and sequential audit trail management."}
         canonicalPath="/sales-orders"
       />
 
@@ -620,10 +623,12 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Sales Orders & Invoicing
+            {isBasic ? 'Orders & Bills' : 'Sales Orders & Invoicing'}
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Unified management of customer sales orders, real-time multi-regime invoicing, stock dispatch, and settlement tracking.
+            {isBasic
+              ? 'Manage customer orders, instant billing, and dispatch.'
+              : 'Unified management of customer sales orders, real-time multi-regime invoicing, stock dispatch, and settlement tracking.'}
           </p>
         </div>
 
@@ -648,7 +653,7 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
             className="flex items-center gap-2 rounded-lg bg-teal-700 hover:bg-teal-800 px-4 py-2 text-xs font-bold text-white shadow-subtle transition-colors"
           >
             <IconPlus className="h-4 w-4" />
-            <span>Create Sales Order</span>
+            <span>{isBasic ? 'Create Bill / Order' : 'Create Sales Order'}</span>
           </button>
         </div>
       </div>
@@ -851,10 +856,12 @@ export const SalesOrders: React.FC<SalesOrdersProps> = ({ onNavigate, params, in
                   <td colSpan={7} className="py-14 text-center text-slate-400">
                     <IconFileUp className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
                     <p className="font-semibold text-sm text-slate-600 dark:text-slate-300">
-                      No Sales Orders Found
+                      {isBasic ? 'No Orders & Bills Found' : 'No Sales Orders Found'}
                     </p>
                     <p className="text-xs text-slate-400 mt-1">
-                      Create your first sales order using the button above to begin tracking fulfillment.
+                      {isBasic
+                        ? 'Create your first bill or order using the button above to begin.'
+                        : 'Create your first sales order using the button above to begin tracking fulfillment.'}
                     </p>
                   </td>
                 </tr>

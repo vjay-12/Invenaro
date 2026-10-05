@@ -21,8 +21,8 @@ interface LicenseContextType {
 const LicenseContext = createContext<LicenseContextType | undefined>(undefined);
 
 export const LicenseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [plan, setPlan] = useState<PlanType>('enterprise');
-  const [modules, setModules] = useState<PlanModules>(() => DEFAULT_PLAN_MODULES.enterprise);
+  const [plan, setPlan] = useState<PlanType>('basic');
+  const [modules, setModules] = useState<PlanModules>(() => DEFAULT_PLAN_MODULES.basic);
   const [state, setState] = useState<LicenseOperationalState>('active');
   const [licenseExpiresAt, setLicenseExpiresAt] = useState<string | null>(null);
   const [graceEndsAt, setGraceEndsAt] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export const LicenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const data = await api.getLicenseStatus();
       if (data && data.plan) {
         setPlan(data.plan);
-        setModules(data.modules || DEFAULT_PLAN_MODULES[data.plan as PlanType] || DEFAULT_PLAN_MODULES.enterprise);
+        setModules(data.modules || DEFAULT_PLAN_MODULES[data.plan as PlanType] || DEFAULT_PLAN_MODULES.basic);
         setState('active');
         setLicenseExpiresAt(data.licenseExpiresAt || null);
         setGraceEndsAt(data.graceEndsAt || null);
@@ -53,8 +53,8 @@ export const LicenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshLicense();
   }, []);
 
-  const hasModule = (_moduleName: keyof PlanModules): boolean => {
-    return true; // All modules permanently unlocked in local boutique standalone
+  const hasModule = (moduleName: keyof PlanModules): boolean => {
+    return !!modules[moduleName];
   };
 
   const isReadOnly = false;
