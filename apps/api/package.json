@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "build:deps": "npm --prefix ../../packages/types run build && npm --prefix ../../packages/validation run build && npm --prefix ../../packages/shared run build",
     "build": "npm run build:deps && prisma generate --schema=../../prisma/schema.prisma && tsc",
+    "seed:boutique": "tsx src/scripts/seed_tamil_nadu_boutique.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {
