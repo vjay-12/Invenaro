@@ -149,8 +149,9 @@ export const CustomerMeasurementsTab: React.FC<CustomerMeasurementsTabProps> = (
                 });
 
             const values = currentVer?.values || [];
-            // Pick top 6 values for summary preview
-            const previewValues = values.slice(0, 6);
+            // Prioritize filled values for summary preview so blank fields don't crowd out entered measurements
+            const filledValues = values.filter((v) => v.num_value !== null && v.num_value !== undefined && v.num_value !== ('' as any));
+            const previewValues = (filledValues.length > 0 ? filledValues : values).slice(0, 6);
 
             return (
               <div
@@ -176,7 +177,7 @@ export const CustomerMeasurementsTab: React.FC<CustomerMeasurementsTabProps> = (
                     </div>
 
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-                      {prof.template?.name || 'Garment'}
+                      {prof.template_name || prof.template?.name || 'Garment'}
                     </span>
                   </div>
 
@@ -228,7 +229,7 @@ export const CustomerMeasurementsTab: React.FC<CustomerMeasurementsTabProps> = (
                     className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
                   >
                     <IconClock className="w-3.5 h-3.5" />
-                    <span>History ({prof.versions?.length || 1})</span>
+                    <span>History ({prof.total_versions || prof.versions?.length || 1})</span>
                   </button>
 
                   <div className="flex items-center gap-2">

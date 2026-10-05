@@ -27,6 +27,7 @@ import {
   IconPackage,
   IconCopy,
   IconSlidersHorizontal,
+  IconSettings,
 } from '../components/icons';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -38,11 +39,11 @@ import { Pagination } from '../components/common/Pagination';
 import { StateSelectDropdown } from '../components/common/StateSelectDropdown';
 import { TabType } from '../components/layout/Sidebar';
 import { CustomerMeasurementsTab } from '../components/boutique/CustomerMeasurementsTab';
-import { VendorsTab } from '../components/boutique/VendorsTab';
+import { TemplateManagerModal } from '../components/boutique/TemplateManagerModal';
 
 interface CompanyTeamProps {
   onNavigate?: (tab: TabType, params?: Record<string, string>) => void;
-  initialTab?: 'customers' | 'vendors' | 'team';
+  initialTab?: 'customers' | 'team';
 }
 
 const GRANULAR_PERMISSIONS = [
@@ -63,11 +64,13 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
   ];
   const isTeamEnabled = enabledModules.includes('team') || user?.role === 'super_admin';
 
-  // Active Main Tab: 'customers' (first/default) vs 'vendors' vs 'team' (existing Team & Roles)
-  const [activeMainTab, setActiveMainTab] = useState<'customers' | 'vendors' | 'team'>(() => {
-    if (initialTab === 'vendors') return 'vendors';
+  // Active Main Tab: 'customers' (default) vs 'team' (Team & Roles if enabled)
+  const [activeMainTab, setActiveMainTab] = useState<'customers' | 'team'>(() => {
     return initialTab === 'team' && isTeamEnabled ? 'team' : 'customers';
   });
+
+  // Measurement Templates management modal state
+  const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState(false);
 
   // Modal 3 Internal Tab: 'measurements' | 'orders' | 'details'
   const [customerDetailTab, setCustomerDetailTab] = useState<'measurements' | 'orders' | 'details'>('measurements');
@@ -80,10 +83,8 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
         setActiveMainTab('customers');
         showToast('Teams & Roles module is disabled for your organization.', 'error');
       }
-    } else if (initialTab === 'customers') {
+    } else {
       setActiveMainTab('customers');
-    } else if (initialTab === 'vendors') {
-      setActiveMainTab('vendors');
     }
   }, [initialTab, isTeamEnabled]);
 
@@ -698,11 +699,6 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
                   <IconBuilding className="w-3 h-3" />
                   <span>Commercial Customer Directory</span>
                 </>
-              ) : activeMainTab === 'vendors' ? (
-                <>
-                  <IconBuilding className="w-3 h-3" />
-                  <span>Boutique Suppliers & Vendor Directory</span>
-                </>
               ) : (
                 <>
                   <IconShieldCheck className="w-3 h-3" />
@@ -714,22 +710,32 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl truncate sm:whitespace-normal">
             {activeMainTab === 'customers'
               ? 'Commercial customer accounts, tailoring measurements, billing addresses, and sales order history.'
-              : activeMainTab === 'vendors'
-              ? 'Boutique suppliers, fabric mills, trim wholesalers, and purchase order linkages.'
               : 'Enterprise team members, role designations, granular RBAC permissions, and access credentials.'}
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
           {activeMainTab === 'customers' ? (
-            <button
-              type="button"
-              onClick={handleOpenAddCustomerModal}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-subtle transition-colors"
-            >
-              <IconPlus className="w-3.5 h-3.5" />
-              <span>Add Customer</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setIsTemplateManagerOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-subtle transition-colors"
+                title="Manage garment measurement templates and tailoring fields"
+              >
+                <IconSettings className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                <span>Measurement Templates</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenAddCustomerModal}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-subtle transition-colors"
+              >
+                <IconPlus className="w-3.5 h-3.5" />
+                <span>Add Customer</span>
+              </button>
+            </>
           ) : activeMainTab === 'team' && isAdmin ? (
             <button
               type="button"
@@ -745,7 +751,7 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
         </div>
       </div>
 
-      {/* Primary Tab Switcher: "Customers", "Vendors", & "Teams & Roles" */}
+      {/* Primary Tab Switcher: "Customers" & "Teams & Roles" */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
         <button
           type="button"
@@ -770,23 +776,6 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
           >
             {Array.isArray(customers) ? customers.length : 0}
           </span>
-        </button>
-
-        {/* Vendors Tab */}
-        <button
-          type="button"
-          onClick={() => {
-            setActiveMainTab('vendors');
-            onNavigate?.('vendors' as any);
-          }}
-          className={`flex items-center gap-2.5 px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer ${
-            activeMainTab === 'vendors'
-              ? 'border-teal-600 text-teal-700 dark:text-teal-400 bg-teal-50/50 dark:bg-teal-950/20'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <IconBuilding className="w-4 h-4" />
-          <span>Vendors & Suppliers</span>
         </button>
 
         {isTeamEnabled && (
@@ -1091,14 +1080,7 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
       )}
 
       {/* =================================================================== */}
-      {/* TAB 2: VENDORS & SUPPLIERS DIRECTORY */}
-      {/* =================================================================== */}
-      {activeMainTab === 'vendors' && (
-        <VendorsTab />
-      )}
-
-      {/* =================================================================== */}
-      {/* TAB 3: TEAM MEMBERS TABLE & WORKFLOWS (EXISTING CODE PRESERVED) */}
+      {/* TAB 2: TEAM MEMBERS TABLE & WORKFLOWS (EXISTING CODE PRESERVED) */}
       {/* =================================================================== */}
       {activeMainTab === 'team' && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] shadow-card">
@@ -2463,6 +2445,14 @@ export const CompanyTeam: React.FC<CompanyTeamProps> = ({ onNavigate, initialTab
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Measurement Templates Management Modal */}
+      {isTemplateManagerOpen && (
+        <TemplateManagerModal
+          isOpen={isTemplateManagerOpen}
+          onClose={() => setIsTemplateManagerOpen(false)}
+        />
       )}
     </div>
   );

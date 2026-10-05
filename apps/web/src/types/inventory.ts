@@ -300,16 +300,18 @@ export type CurrencyCode = 'USD' | 'EUR' | 'INR';
 export interface MeasurementTemplateField {
   id: string;
   template_id?: string;
-  name: string;
-  code: string;
-  field_type: 'numeric' | 'text';
+  name?: string;
+  field_name?: string;
+  code?: string;
+  field_key?: string;
+  field_type?: 'numeric' | 'number' | 'text';
   default_unit?: string | null;
-  display_order: number;
-  is_required: boolean;
+  display_order?: number;
+  is_required?: boolean;
   help_text?: string | null;
   min_val?: number | null;
   max_val?: number | null;
-  is_active: boolean;
+  is_active?: boolean;
 }
 
 export interface MeasurementTemplate {
@@ -355,6 +357,8 @@ export interface CustomerMeasurementProfile {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  template_name?: string | null;
+  total_versions?: number;
   template?: MeasurementTemplate | null;
   current_version?: CustomerMeasurementVersion | null;
   versions?: CustomerMeasurementVersion[];

@@ -6,8 +6,8 @@ import { customerMeasurementProfileSchema, customerMeasurementVersionSchema } fr
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
 
-// GET /customers/:customerId/measurement-profiles - List profiles for a customer
-router.get('/:customerId/measurement-profiles', async (req, res): Promise<void> => {
+// GET /customers/:customerId/measurement-profiles or /customers/:customerId/measurements
+router.get(['/:customerId/measurement-profiles', '/:customerId/measurements'], async (req, res): Promise<void> => {
   try {
     const { customerId } = req.params;
     const profiles = await CustomerMeasurementService.getProfilesByCustomer(customerId);
@@ -18,8 +18,8 @@ router.get('/:customerId/measurement-profiles', async (req, res): Promise<void> 
   }
 });
 
-// GET /customers/:customerId/measurement-profiles/:profileId - Get profile details
-router.get('/:customerId/measurement-profiles/:profileId', async (req, res): Promise<void> => {
+// GET /customers/:customerId/measurement-profiles/:profileId
+router.get(['/:customerId/measurement-profiles/:profileId', '/:customerId/measurements/:profileId'], async (req, res): Promise<void> => {
   try {
     const { customerId, profileId } = req.params;
     const profile = await CustomerMeasurementService.getProfileDetails(customerId, profileId);
@@ -33,8 +33,8 @@ router.get('/:customerId/measurement-profiles/:profileId', async (req, res): Pro
   }
 });
 
-// GET /customers/:customerId/measurement-profiles/:profileId/history - Get complete version history
-router.get('/:customerId/measurement-profiles/:profileId/history', async (req, res): Promise<void> => {
+// GET /customers/:customerId/measurement-profiles/:profileId/history
+router.get(['/:customerId/measurement-profiles/:profileId/history', '/:customerId/measurements/:profileId/history'], async (req, res): Promise<void> => {
   try {
     const { customerId, profileId } = req.params;
     const history = await CustomerMeasurementService.getProfileHistory(customerId, profileId);
@@ -48,8 +48,8 @@ router.get('/:customerId/measurement-profiles/:profileId/history', async (req, r
   }
 });
 
-// POST /customers/:customerId/measurement-profiles - Create new measurement profile
-router.post('/:customerId/measurement-profiles', async (req, res): Promise<void> => {
+// POST /customers/:customerId/measurement-profiles
+router.post(['/:customerId/measurement-profiles', '/:customerId/measurements'], async (req, res): Promise<void> => {
   try {
     const { customerId } = req.params;
     const parse = customerMeasurementProfileSchema.safeParse(req.body);
@@ -75,8 +75,8 @@ router.post('/:customerId/measurement-profiles', async (req, res): Promise<void>
   }
 });
 
-// POST /customers/:customerId/measurement-profiles/:profileId/versions - Add new measurement version
-router.post('/:customerId/measurement-profiles/:profileId/versions', async (req, res): Promise<void> => {
+// POST /customers/:customerId/measurement-profiles/:profileId/versions
+router.post(['/:customerId/measurement-profiles/:profileId/versions', '/:customerId/measurements/:profileId/versions'], async (req, res): Promise<void> => {
   try {
     const { customerId, profileId } = req.params;
     const parse = customerMeasurementVersionSchema.safeParse(req.body);
@@ -100,8 +100,8 @@ router.post('/:customerId/measurement-profiles/:profileId/versions', async (req,
   }
 });
 
-// PUT /customers/:customerId/measurement-profiles/:profileId - Update profile name / notes
-router.put('/:customerId/measurement-profiles/:profileId', async (req, res): Promise<void> => {
+// PUT /customers/:customerId/measurement-profiles/:profileId
+router.put(['/:customerId/measurement-profiles/:profileId', '/:customerId/measurements/:profileId'], async (req, res): Promise<void> => {
   try {
     const { customerId, profileId } = req.params;
     const updated = await CustomerMeasurementService.updateProfile(customerId, profileId, req.body);
@@ -111,8 +111,8 @@ router.put('/:customerId/measurement-profiles/:profileId', async (req, res): Pro
   }
 });
 
-// DELETE /customers/:customerId/measurement-profiles/:profileId - Archive profile
-router.delete('/:customerId/measurement-profiles/:profileId', async (req, res): Promise<void> => {
+// DELETE /customers/:customerId/measurement-profiles/:profileId
+router.delete(['/:customerId/measurement-profiles/:profileId', '/:customerId/measurements/:profileId'], async (req, res): Promise<void> => {
   try {
     const { customerId, profileId } = req.params;
     await CustomerMeasurementService.deleteProfile(customerId, profileId);

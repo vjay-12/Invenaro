@@ -5,14 +5,12 @@ import {
   IconCheck,
   IconAlertCircle,
   IconRefreshCw,
-  IconFileText,
   IconSlidersHorizontal,
 } from '../icons';
 import { api } from '../../services/api';
 import {
   MeasurementTemplate,
   CustomerMeasurementProfile,
-  CustomerMeasurementVersion,
 } from '../../types/inventory';
 
 interface AddMeasurementModalProps {
@@ -30,7 +28,7 @@ interface FieldValueState {
   field_code: string;
   field_id?: string;
   num_value: string;
-  unit: string;
+  unit: 'in' | 'cm';
   notes: string;
   is_required: boolean;
   field_type: 'numeric' | 'text';
@@ -46,6 +44,7 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
 }) => {
   const [templates, setTemplates] = useState<MeasurementTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [globalUnit, setGlobalUnit] = useState<'in' | 'cm'>('in');
   const [profileName, setProfileName] = useState<string>('');
   const [profileNotes, setProfileNotes] = useState<string>('');
   const [measuredBy, setMeasuredBy] = useState<string>('');
@@ -73,13 +72,16 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
           // Populate fields from current_version if available
           const currentVer = existingProfile.current_version;
           if (currentVer?.values && currentVer.values.length > 0) {
+            const firstUnit = (currentVer.values[0]?.unit as 'in' | 'cm') || 'in';
+            setGlobalUnit(firstUnit);
+
             setFields(
               currentVer.values.map((v) => ({
-                field_name: v.field_name,
-                field_code: v.field_code,
+                field_name: v.field_name || (v as any).name || 'Field',
+                field_code: v.field_code || (v as any).code || 'field',
                 field_id: v.field_id || undefined,
                 num_value: v.num_value !== null && v.num_value !== undefined ? String(v.num_value) : '',
-                unit: v.unit || 'in',
+                unit: (v.unit as 'in' | 'cm') || firstUnit,
                 notes: v.notes || '',
                 is_required: false,
                 field_type: 'numeric',
@@ -91,7 +93,7 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
           const first = data[0];
           setSelectedTemplateId(first.id);
           setProfileName(first.name);
-          populateFieldsFromTemplate(first);
+          populateFieldsFromTemplate(first, 'in');
         }
       } catch (err: any) {
         console.error('Failed to load templates:', err);
@@ -103,7 +105,7 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
     fetchTemplates();
   }, [isOpen, existingProfile]);
 
-  const populateFieldsFromTemplate = (tmpl: MeasurementTemplate) => {
+  const populateFieldsFromTemplate = (tmpl: MeasurementTemplate, unit: 'in' | 'cm' = globalUnit) => {
     if (!tmpl.fields || tmpl.fields.length === 0) {
       setFields([]);
       return;
@@ -111,16 +113,21 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
     setFields(
       tmpl.fields
         .filter((f) => f.is_active !== false)
-        .map((f) => ({
-          field_name: f.name,
-          field_code: f.code,
-          field_id: f.id,
-          num_value: '',
-          unit: f.default_unit || 'in',
-          notes: '',
-          is_required: f.is_required,
-          field_type: f.field_type || 'numeric',
-        }))
+        .map((f) => {
+          const name = f.field_name || f.name || 'Measurement Field';
+          const code = f.field_key || f.code || name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          const defaultUnit = (f.default_unit as 'in' | 'cm') || unit;
+          return {
+            field_name: name,
+            field_code: code,
+            field_id: f.id,
+            num_value: '',
+            unit: defaultUnit,
+            notes: '',
+            is_required: false, // Measurements are NEVER mandatory by default
+            field_type: (f.field_type === 'text' ? 'text' : 'numeric') as 'numeric' | 'text',
+          };
+        })
     );
   };
 
@@ -131,8 +138,19 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
       if (!existingProfile) {
         setProfileName(tmpl.name);
       }
-      populateFieldsFromTemplate(tmpl);
+      populateFieldsFromTemplate(tmpl, globalUnit);
     }
+  };
+
+  const handleGlobalUnitChange = (newUnit: 'in' | 'cm') => {
+    setGlobalUnit(newUnit);
+    // Switch all fields to this unit without silently modifying existing numbers
+    setFields((prev) =>
+      prev.map((f) => ({
+        ...f,
+        unit: newUnit,
+      }))
+    );
   };
 
   const handleFieldChange = (index: number, key: keyof FieldValueState, value: any) => {
@@ -148,33 +166,35 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
     setErrorMessage(null);
 
     if (!profileName.trim()) {
-      setErrorMessage('Profile name is required (e.g. Saree Blouse, Churidar)');
+      setErrorMessage('Garment profile name is required (e.g. Saree Blouse, Churidar)');
       return;
     }
 
     try {
-      // Validate fields
-      const formattedValues = fields.map((f, i) => {
-        const parsedNum = f.num_value.trim() !== '' ? parseFloat(f.num_value.trim()) : null;
-        if (f.num_value.trim() !== '' && (isNaN(parsedNum!) || parsedNum! < 0)) {
-          throw new Error(`Invalid measurement value for "${f.field_name}". Must be a valid positive number.`);
-        }
-        return {
-          field_id: f.field_id,
-          field_name: f.field_name,
-          field_code: f.field_code,
-          num_value: parsedNum,
-          unit: f.unit || 'in',
-          text_value: f.field_type === 'text' ? f.num_value : undefined,
-          notes: f.notes.trim() || undefined,
-          display_order: i + 1,
-        };
-      });
+      // Validate fields (Measurements are NOT mandatory, blank values are allowed!)
+      const formattedValues = fields
+        .filter((f) => f.num_value.trim() !== '' || f.notes.trim() !== '')
+        .map((f, i) => {
+          const parsedNum = f.num_value.trim() !== '' ? parseFloat(f.num_value.trim()) : null;
+          if (parsedNum !== null && (isNaN(parsedNum) || parsedNum <= 0)) {
+            throw new Error(`Invalid measurement value for "${f.field_name}". Must be a valid positive number.`);
+          }
+          return {
+            field_id: f.field_id,
+            field_name: f.field_name,
+            field_code: f.field_code,
+            numeric_value: parsedNum,
+            unit: f.unit || globalUnit,
+            text_value: f.field_type === 'text' ? f.num_value : undefined,
+            notes: f.notes.trim() || undefined,
+            display_order: i + 1,
+          };
+        });
 
       setIsSubmitting(true);
 
       if (existingProfile) {
-        // Record a new version (Non-destructive!)
+        // Record a new version non-destructively!
         await api.addCustomerMeasurementVersion(customerId, existingProfile.id, {
           measured_by: measuredBy.trim() || undefined,
           notes: versionNotes.trim() || profileNotes.trim() || undefined,
@@ -209,7 +229,7 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
       subtitle={`Customer: ${customerName} • ${existingProfile ? `Version ${(existingProfile.current_version?.version_number || 1) + 1}` : 'Initial Profile v1'}`}
       maxWidth="3xl"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 font-sans">
         {errorMessage && (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400 text-xs">
             <IconAlertCircle className="w-4 h-4 shrink-0" />
@@ -217,11 +237,12 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
           </div>
         )}
 
-        {/* Profile & Template Selector */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#0C1017]">
+        {/* Profile, Template & Master Unit Selector */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#0C1017]">
+          {/* 1. Template Selector */}
           <div>
             <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-              Measurement Template *
+              Select Template *
             </label>
             <select
               value={selectedTemplateId}
@@ -231,24 +252,40 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
             >
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name} {t.category ? `(${t.category})` : ''}
+                  {t.name}
                 </option>
               ))}
             </select>
           </div>
 
+          {/* 2. Garment Profile Name */}
           <div>
             <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-              Garment Profile Name *
+              Profile Name *
             </label>
             <input
               type="text"
               required
               value={profileName}
               onChange={(e) => setProfileName(e.target.value)}
-              placeholder="e.g. Saree Blouse, Reception Kurti"
+              placeholder="e.g. Saree Blouse, Churidar"
               className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-teal-600"
             />
+          </div>
+
+          {/* 3. Primary Measurement Unit */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Measurement Unit
+            </label>
+            <select
+              value={globalUnit}
+              onChange={(e) => handleGlobalUnitChange(e.target.value as 'in' | 'cm')}
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] px-3 py-2 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-teal-600"
+            >
+              <option value="in">Inches (in)</option>
+              <option value="cm">Centimeters (cm)</option>
+            </select>
           </div>
         </div>
 
@@ -256,7 +293,7 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
-              Measured By / Master Tailor
+              Measured By / Master Tailor (Optional)
             </label>
             <input
               type="text"
@@ -269,13 +306,13 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
 
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
-              Fitting Notes / Customer Preferences
+              Fitting Notes / Customer Preferences (Optional)
             </label>
             <input
               type="text"
               value={profileNotes}
               onChange={(e) => setProfileNotes(e.target.value)}
-              placeholder="e.g. Add 0.5 inch loose, deep back neck, prefer elbow sleeve"
+              placeholder="e.g. Add 0.5 inch loose, deep back neck, elbow sleeve"
               className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-[#F4F5F8] dark:bg-[#131924] px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-teal-600"
             />
           </div>
@@ -288,12 +325,12 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
             <span>Garment Measurements ({fields.length} parameters)</span>
           </div>
           <span className="text-[10px] text-slate-400 font-mono">
-            Default unit: Inches (in) • Metric (cm) supported
+            Optional fields • Blank values allowed
           </span>
         </div>
 
         {/* Responsive Two-Column Layout for Measurement Fields */}
-        <div className="max-h-[360px] overflow-y-auto pr-1 space-y-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 p-3">
+        <div className="max-h-[360px] overflow-y-auto pr-1 space-y-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 p-3">
           {isLoadingTemplates ? (
             <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
               <IconRefreshCw className="w-4 h-4 animate-spin text-teal-600" />
@@ -304,18 +341,18 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
               No fields configured for this template.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
               {fields.map((f, idx) => (
                 <div
-                  key={`${f.field_code}-${idx}`}
+                  key={`${f.field_name}-${idx}`}
                   className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] shadow-xs hover:border-teal-500/40 transition-colors"
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
-                      {f.field_name} {f.is_required && <span className="text-rose-500">*</span>}
+                      {f.field_name}
                     </label>
-                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-wider">
-                      {f.field_code}
+                    <span className="text-[10px] font-mono text-teal-600 dark:text-teal-400 font-bold">
+                      {f.unit}
                     </span>
                   </div>
 
@@ -324,74 +361,52 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
                     <div className="relative flex-1">
                       <input
                         type="number"
-                        step="0.125"
+                        step="any"
                         min="0"
-                        placeholder="0.0"
+                        placeholder="—"
                         value={f.num_value}
                         onChange={(e) => handleFieldChange(idx, 'num_value', e.target.value)}
                         className="w-full rounded-md border border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#0C1017] px-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-teal-600 text-right pr-2"
                       />
                     </div>
 
-                    {/* Unit Selector */}
+                    {/* Unit Selector per field if needed */}
                     <select
                       value={f.unit}
                       onChange={(e) => handleFieldChange(idx, 'unit', e.target.value)}
-                      className="w-20 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 px-2 py-1.5 text-xs font-mono font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-teal-600"
+                      className="w-16 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 px-2 py-1.5 text-xs font-mono font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-teal-600"
                     >
-                      <option value="in">in (inch)</option>
+                      <option value="in">in</option>
                       <option value="cm">cm</option>
                     </select>
                   </div>
-
-                  {/* Inline field note */}
-                  <input
-                    type="text"
-                    placeholder="Specific note (e.g. 0.5 loose, cut 1 in down)"
-                    value={f.notes}
-                    onChange={(e) => handleFieldChange(idx, 'notes', e.target.value)}
-                    className="w-full mt-1.5 rounded border border-slate-100 dark:border-slate-800/80 bg-transparent px-2 py-1 text-[11px] text-slate-600 dark:text-slate-400 placeholder:text-slate-400 focus:outline-none focus:border-teal-500"
-                  />
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Modal Footer */}
-        <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
-          <div className="text-[11px] text-slate-500 flex items-center gap-1">
-            <IconCheck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Preserves non-destructive history with automatic version incrementing.</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-subtle transition-colors flex items-center gap-1.5 disabled:opacity-50"
-            >
-              {isSubmitting ? (
-                <>
-                  <IconRefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <>
-                  <IconCheck className="w-3.5 h-3.5" />
-                  <span>Save Measurement</span>
-                </>
-              )}
-            </button>
-          </div>
+        {/* Modal Action Buttons */}
+        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="px-5 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-subtle flex items-center gap-1.5 transition-colors"
+          >
+            {isSubmitting ? (
+              <IconRefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <IconCheck className="w-3.5 h-3.5" />
+            )}
+            <span>{existingProfile ? 'Record Version' : 'Save Measurements'}</span>
+          </button>
         </div>
       </form>
     </Modal>

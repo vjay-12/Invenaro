@@ -181,6 +181,6 @@ export const customerMeasurementVersionSchema = z.object({
   notes: z.string().nullable().optional(),
   measured_by: z.string().nullable().optional(),
   measured_at: z.string().optional(),
-  values: z.array(customerMeasurementValueSchema).min(1, 'At least one measurement value is required'),
+  values: z.array(customerMeasurementValueSchema).optional().default([]),
 });
 
