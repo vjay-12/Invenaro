@@ -3,7 +3,6 @@ import {
   IconSearch,
   IconPlus,
   IconEdit,
-  IconEye,
   IconArchive,
   IconRefreshCw,
   IconBuilding,
@@ -43,7 +42,7 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
       const data = await api.getVendors(
         searchQuery || undefined,
         selectedType !== 'All Types' ? selectedType : undefined,
-        statusFilter !== 'all' ? statusFilter : undefined
+        statusFilter
       );
       setVendors(Array.isArray(data) ? data : []);
     } catch (err: any) {
@@ -64,15 +63,27 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
 
   const handleToggleArchive = async (vendor: Vendor, e: React.MouseEvent) => {
     e.stopPropagation();
+    const willBeActive = !vendor.is_active;
+
+    // Optimistically update vendor in local list
+    setVendors((prev) =>
+      prev.map((v) => (v.id === vendor.id ? { ...v, is_active: willBeActive } : v))
+    );
+
     try {
       if (vendor.is_active) {
         await api.archiveVendor(vendor.id);
       } else {
         await api.restoreVendor(vendor.id);
       }
-      fetchVendors();
+      await fetchVendors();
     } catch (err: any) {
       console.error('Failed to toggle vendor status:', err);
+      // Revert optimistic update
+      setVendors((prev) =>
+        prev.map((v) => (v.id === vendor.id ? { ...v, is_active: vendor.is_active } : v))
+      );
+      fetchVendors();
     }
   };
 
@@ -88,21 +99,39 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
   };
 
   const filteredVendors = useMemo(() => {
-    if (!searchQuery.trim()) return vendors;
-    const q = searchQuery.toLowerCase();
-    return vendors.filter(
-      (v) =>
-        v.name?.toLowerCase().includes(q) ||
-        v.contact_person?.toLowerCase().includes(q) ||
-        v.phone?.toLowerCase().includes(q) ||
-        v.email?.toLowerCase().includes(q) ||
-        v.gstin?.toLowerCase().includes(q) ||
-        v.city?.toLowerCase().includes(q) ||
-        v.state?.toLowerCase().includes(q) ||
-        v.vendor_type?.toLowerCase().includes(q) ||
-        v.category?.toLowerCase().includes(q)
-    );
-  }, [vendors, searchQuery]);
+    return vendors.filter((v) => {
+      // 1. Status Filter
+      if (statusFilter === 'active' && v.is_active === false) return false;
+      if (statusFilter === 'archived' && v.is_active !== false) return false;
+
+      // 2. Vendor Type Filter
+      if (
+        selectedType !== 'All Types' &&
+        v.vendor_type !== selectedType &&
+        v.category !== selectedType
+      ) {
+        return false;
+      }
+
+      // 3. Search Query Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matches =
+          v.name?.toLowerCase().includes(q) ||
+          v.contact_person?.toLowerCase().includes(q) ||
+          v.phone?.toLowerCase().includes(q) ||
+          v.email?.toLowerCase().includes(q) ||
+          v.gstin?.toLowerCase().includes(q) ||
+          v.city?.toLowerCase().includes(q) ||
+          v.state?.toLowerCase().includes(q) ||
+          v.vendor_type?.toLowerCase().includes(q) ||
+          v.category?.toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+
+      return true;
+    });
+  }, [vendors, statusFilter, selectedType, searchQuery]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -178,17 +207,17 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
       {/* Vendors Table */}
       <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131924] overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs table-fixed min-w-[850px]">
+          <table className="w-full text-left text-xs table-fixed min-w-[900px]">
             <thead className="border-b border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#0C1017] text-[10px] font-mono uppercase tracking-wider text-slate-600 dark:text-slate-400">
               <tr>
-                <th className="w-[22%] py-3 px-3 font-bold">Vendor Name</th>
-                <th className="w-[15%] py-3 px-3 font-bold">Contact</th>
-                <th className="w-[13%] py-3 px-2.5 font-bold">Phone</th>
-                <th className="w-[14%] py-3 px-2.5 font-bold">Location</th>
-                <th className="w-[14%] py-3 px-2.5 font-bold">Vendor Type</th>
-                <th className="w-[11%] py-3 px-2 font-bold font-mono">GSTIN</th>
-                <th className="w-[8%] py-3 px-2 font-bold text-center">Status</th>
-                <th className="w-[9%] py-3 px-2.5 font-bold text-right">Actions</th>
+                <th className="w-[22%] min-w-[170px] py-3 px-3 font-bold">Vendor Name</th>
+                <th className="w-[15%] min-w-[130px] py-3 px-3 font-bold">Contact</th>
+                <th className="w-[11%] min-w-[105px] py-3 px-2.5 font-bold">Phone</th>
+                <th className="w-[12%] min-w-[110px] py-3 px-2.5 font-bold">Location</th>
+                <th className="w-[13%] min-w-[120px] py-3 px-2.5 font-bold">Vendor Type</th>
+                <th className="w-[13%] min-w-[125px] py-3 px-2 font-bold font-mono">GSTIN</th>
+                <th className="w-[7%] min-w-[65px] py-3 px-2 font-bold text-center">Status</th>
+                <th className="w-[7%] min-w-[75px] py-3 px-3 font-bold text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans">
@@ -228,7 +257,7 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
                           {vendor.name.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="font-bold text-slate-900 dark:text-white truncate group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                          <div className="font-bold text-slate-900 dark:text-white truncate group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" title={vendor.name}>
                             {vendor.name}
                           </div>
                           {vendor.code && (
@@ -242,11 +271,11 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
 
                     {/* Contact Person */}
                     <td className="py-2.5 px-3 overflow-hidden align-middle">
-                      <div className="text-slate-800 dark:text-slate-200 font-medium truncate">
+                      <div className="text-slate-800 dark:text-slate-200 font-medium truncate" title={vendor.contact_person || undefined}>
                         {vendor.contact_person || '—'}
                       </div>
                       {vendor.email && (
-                        <div className="text-[10px] text-slate-400 truncate">
+                        <div className="text-[10px] text-slate-400 truncate" title={vendor.email}>
                           {vendor.email}
                         </div>
                       )}
@@ -254,28 +283,37 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
 
                     {/* Phone */}
                     <td className="py-2.5 px-2.5 overflow-hidden align-middle">
-                      <span className="font-mono text-slate-700 dark:text-slate-300 text-[11px] truncate block">
+                      <span className="font-mono text-slate-700 dark:text-slate-300 text-[11px] truncate block" title={vendor.phone || undefined}>
                         {vendor.phone || '—'}
                       </span>
                     </td>
 
                     {/* Location */}
                     <td className="py-2.5 px-2.5 overflow-hidden align-middle">
-                      <div className="text-slate-700 dark:text-slate-300 text-[11px] truncate">
+                      <div
+                        className="text-slate-700 dark:text-slate-300 text-[11px] truncate"
+                        title={vendor.address || `${vendor.city || ''} ${vendor.state || ''}`.trim() || undefined}
+                      >
                         {vendor.city ? `${vendor.city}${vendor.state ? `, ${vendor.state}` : ''}` : (vendor.state || vendor.address || '—')}
                       </div>
                     </td>
 
                     {/* Vendor Type */}
                     <td className="py-2.5 px-2.5 overflow-hidden align-middle">
-                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20 truncate max-w-full">
+                      <span
+                        className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20 truncate max-w-full"
+                        title={vendor.vendor_type || vendor.category || 'Fabric Supplier'}
+                      >
                         {vendor.vendor_type || vendor.category || 'Fabric Supplier'}
                       </span>
                     </td>
 
                     {/* GSTIN */}
                     <td className="py-2.5 px-2 overflow-hidden align-middle">
-                      <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400 truncate block">
+                      <span
+                        className="font-mono text-[10px] text-slate-600 dark:text-slate-400 truncate block tracking-tight"
+                        title={vendor.gstin || undefined}
+                      >
                         {vendor.gstin || '—'}
                       </span>
                     </td>
@@ -294,20 +332,8 @@ export const VendorsTab: React.FC<VendorsTabProps> = ({ onSelectVendorForPO }) =
                     </td>
 
                     {/* Actions */}
-                    <td className="py-2.5 px-2.5 text-right overflow-hidden align-middle">
+                    <td className="py-2.5 px-3 text-right overflow-hidden align-middle">
                       <div className="inline-flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenDetail(vendor);
-                          }}
-                          className="p-1.5 rounded text-slate-500 hover:text-teal-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          title="View vendor details & POs"
-                        >
-                          <IconEye className="w-3.5 h-3.5" />
-                        </button>
-
                         <button
                           type="button"
                           onClick={(e) => handleOpenEdit(vendor, e)}

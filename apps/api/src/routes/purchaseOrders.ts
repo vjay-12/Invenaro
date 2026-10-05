@@ -56,8 +56,15 @@ router.post('/', async (req, res): Promise<void> => {
         }))
       : req.body.items;
 
+    let supplierName = req.body.supplier_name;
+    if (!supplierName && req.body.supplier_id) {
+      const v = await prisma.supplier.findUnique({ where: { id: req.body.supplier_id } }).catch(() => null);
+      if (v) supplierName = v.name;
+    }
+
     const normalizedBody = {
       ...req.body,
+      supplier_name: supplierName,
       godown_id: req.body.godown_id || req.body.target_location_id,
       items: rawItems,
     };

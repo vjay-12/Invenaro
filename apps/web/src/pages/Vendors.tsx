@@ -5,7 +5,6 @@ import {
   IconPlus,
   IconRefreshCw,
   IconEdit,
-  IconEye,
   IconArchive,
   IconPhone,
   IconMail,
@@ -27,6 +26,7 @@ interface VendorsPageProps {
 
 export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [counts, setCounts] = useState<{ all?: number; active?: number; archived?: number }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('All Types');
@@ -50,12 +50,18 @@ export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
   const loadVendors = async () => {
     setIsLoading(true);
     try {
-      const data = await api.getVendors(
-        searchQuery || undefined,
-        selectedType !== 'All Types' ? selectedType : undefined,
-        statusFilter !== 'all' ? statusFilter : undefined
-      );
+      const [data, countsData] = await Promise.all([
+        api.getVendors(
+          searchQuery || undefined,
+          selectedType !== 'All Types' ? selectedType : undefined,
+          statusFilter
+        ),
+        api.getVendorCounts(selectedType !== 'All Types' ? selectedType : undefined).catch(() => null),
+      ]);
       setVendors(Array.isArray(data) ? data : []);
+      if (countsData && typeof countsData.all === 'number') {
+        setCounts(countsData);
+      }
     } catch (err: any) {
       console.error('Failed to load vendors:', err);
       showToast(err.message || 'Failed to load vendors', 'error');
@@ -75,6 +81,24 @@ export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
 
   const handleToggleArchive = async (vendor: Vendor, e: React.MouseEvent) => {
     e.stopPropagation();
+    const willBeActive = !vendor.is_active;
+
+    // Optimistically update vendor in local state
+    setVendors((prev) =>
+      prev.map((v) => (v.id === vendor.id ? { ...v, is_active: willBeActive } : v))
+    );
+
+    // Optimistically update badge counts
+    setCounts((prev) => ({
+      all: prev.all,
+      active: willBeActive
+        ? (prev.active ?? 0) + 1
+        : Math.max(0, (prev.active ?? 1) - 1),
+      archived: willBeActive
+        ? Math.max(0, (prev.archived ?? 1) - 1)
+        : (prev.archived ?? 0) + 1,
+    }));
+
     try {
       if (vendor.is_active) {
         await api.archiveVendor(vendor.id);
@@ -83,10 +107,15 @@ export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
         await api.restoreVendor(vendor.id);
         showToast(`Vendor ${vendor.name} reactivated`);
       }
-      loadVendors();
+      await loadVendors();
     } catch (err: any) {
       console.error('Failed to update vendor status:', err);
       showToast('Failed to update status', 'error');
+      // Rollback optimistic update
+      setVendors((prev) =>
+        prev.map((v) => (v.id === vendor.id ? { ...v, is_active: vendor.is_active } : v))
+      );
+      loadVendors();
     }
   };
 
@@ -109,21 +138,39 @@ export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
 
   // Client-side quick filter
   const filteredVendors = useMemo(() => {
-    if (!searchQuery.trim()) return vendors;
-    const q = searchQuery.toLowerCase();
-    return vendors.filter(
-      (v) =>
-        v.name?.toLowerCase().includes(q) ||
-        v.contact_person?.toLowerCase().includes(q) ||
-        v.phone?.toLowerCase().includes(q) ||
-        v.email?.toLowerCase().includes(q) ||
-        v.gstin?.toLowerCase().includes(q) ||
-        v.city?.toLowerCase().includes(q) ||
-        v.state?.toLowerCase().includes(q) ||
-        v.vendor_type?.toLowerCase().includes(q) ||
-        v.category?.toLowerCase().includes(q)
-    );
-  }, [vendors, searchQuery]);
+    return vendors.filter((v) => {
+      // 1. Status Filter
+      if (statusFilter === 'active' && v.is_active === false) return false;
+      if (statusFilter === 'archived' && v.is_active !== false) return false;
+
+      // 2. Vendor Type Filter
+      if (
+        selectedType !== 'All Types' &&
+        v.vendor_type !== selectedType &&
+        v.category !== selectedType
+      ) {
+        return false;
+      }
+
+      // 3. Search Query Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matches =
+          v.name?.toLowerCase().includes(q) ||
+          v.contact_person?.toLowerCase().includes(q) ||
+          v.phone?.toLowerCase().includes(q) ||
+          v.email?.toLowerCase().includes(q) ||
+          v.gstin?.toLowerCase().includes(q) ||
+          v.city?.toLowerCase().includes(q) ||
+          v.state?.toLowerCase().includes(q) ||
+          v.vendor_type?.toLowerCase().includes(q) ||
+          v.category?.toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+
+      return true;
+    });
+  }, [vendors, statusFilter, selectedType, searchQuery]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -213,21 +260,32 @@ export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
             {/* Status Filter Pills */}
             <div className="flex items-center gap-1 text-xs font-semibold">
               {[
-                { id: 'all', label: 'All' },
-                { id: 'active', label: 'Active' },
-                { id: 'archived', label: 'Archived' },
+                { id: 'all', label: 'All', count: counts.all },
+                { id: 'active', label: 'Active', count: counts.active },
+                { id: 'archived', label: 'Archived', count: counts.archived },
               ].map((pill) => (
                 <button
                   key={pill.id}
                   type="button"
                   onClick={() => setStatusFilter(pill.id as any)}
-                  className={`rounded-lg px-2.5 py-1 text-xs transition-colors ${
+                  className={`rounded-lg px-2.5 py-1 text-xs transition-colors flex items-center gap-1.5 ${
                     statusFilter === pill.id
                       ? 'bg-teal-700 text-white font-bold shadow-subtle'
                       : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
-                  {pill.label}
+                  <span>{pill.label}</span>
+                  {typeof pill.count === 'number' && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono leading-tight ${
+                        statusFilter === pill.id
+                          ? 'bg-teal-800 text-teal-100'
+                          : 'bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                      }`}
+                    >
+                      {pill.count}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -246,17 +304,17 @@ export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
 
         {/* Vendors Table */}
         <div className="overflow-x-auto w-full">
-          <table className="w-full text-left text-xs table-fixed min-w-[850px]">
+          <table className="w-full text-left text-xs table-fixed min-w-[900px]">
             <thead className="border-b border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#0C1017] text-[10px] font-mono uppercase tracking-wider text-slate-600 dark:text-slate-400">
               <tr>
-                <th className="w-[22%] py-3 px-3 font-bold">Vendor Name</th>
-                <th className="w-[15%] py-3 px-3 font-bold">Contact</th>
-                <th className="w-[13%] py-3 px-2.5 font-bold">Phone</th>
-                <th className="w-[14%] py-3 px-2.5 font-bold">Location</th>
-                <th className="w-[14%] py-3 px-2.5 font-bold">Vendor Type</th>
-                <th className="w-[11%] py-3 px-2 font-bold font-mono">GSTIN</th>
-                <th className="w-[8%] py-3 px-2 font-bold text-center">Status</th>
-                <th className="w-[9%] py-3 px-2.5 font-bold text-right">Actions</th>
+                <th className="w-[22%] min-w-[170px] py-3 px-3 font-bold">Vendor Name</th>
+                <th className="w-[15%] min-w-[130px] py-3 px-3 font-bold">Contact</th>
+                <th className="w-[11%] min-w-[105px] py-3 px-2.5 font-bold">Phone</th>
+                <th className="w-[12%] min-w-[110px] py-3 px-2.5 font-bold">Location</th>
+                <th className="w-[13%] min-w-[120px] py-3 px-2.5 font-bold">Vendor Type</th>
+                <th className="w-[13%] min-w-[125px] py-3 px-2 font-bold font-mono">GSTIN</th>
+                <th className="w-[7%] min-w-[65px] py-3 px-2 font-bold text-center">Status</th>
+                <th className="w-[7%] min-w-[75px] py-3 px-3 font-bold text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans">
@@ -325,11 +383,11 @@ export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
 
                     {/* Contact Person */}
                     <td className="py-2.5 px-3 overflow-hidden align-middle">
-                      <div className="text-slate-800 dark:text-slate-200 font-medium truncate">
+                      <div className="text-slate-800 dark:text-slate-200 font-medium truncate" title={vendor.contact_person || undefined}>
                         {vendor.contact_person || '—'}
                       </div>
                       {vendor.email && (
-                        <div className="text-[10px] text-slate-400 truncate">
+                        <div className="text-[10px] text-slate-400 truncate" title={vendor.email}>
                           {vendor.email}
                         </div>
                       )}
@@ -337,28 +395,37 @@ export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
 
                     {/* Phone */}
                     <td className="py-2.5 px-2.5 overflow-hidden align-middle">
-                      <span className="font-mono text-slate-700 dark:text-slate-300 text-[11px] truncate block">
+                      <span className="font-mono text-slate-700 dark:text-slate-300 text-[11px] truncate block" title={vendor.phone || undefined}>
                         {vendor.phone || '—'}
                       </span>
                     </td>
 
                     {/* Location (City, State) */}
                     <td className="py-2.5 px-2.5 overflow-hidden align-middle">
-                      <div className="text-slate-700 dark:text-slate-300 text-[11px] truncate" title={vendor.address || `${vendor.city || ''} ${vendor.state || ''}`}>
+                      <div
+                        className="text-slate-700 dark:text-slate-300 text-[11px] truncate"
+                        title={vendor.address || `${vendor.city || ''} ${vendor.state || ''}`.trim() || undefined}
+                      >
                         {vendor.city ? `${vendor.city}${vendor.state ? `, ${vendor.state}` : ''}` : (vendor.state || vendor.address || '—')}
                       </div>
                     </td>
 
                     {/* Vendor Type */}
                     <td className="py-2.5 px-2.5 overflow-hidden align-middle">
-                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20 truncate max-w-full">
+                      <span
+                        className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20 truncate max-w-full"
+                        title={vendor.vendor_type || vendor.category || 'Fabric Supplier'}
+                      >
                         {vendor.vendor_type || vendor.category || 'Fabric Supplier'}
                       </span>
                     </td>
 
                     {/* GSTIN */}
                     <td className="py-2.5 px-2 overflow-hidden align-middle">
-                      <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400 truncate block">
+                      <span
+                        className="font-mono text-[10px] text-slate-600 dark:text-slate-400 truncate block tracking-tight"
+                        title={vendor.gstin || undefined}
+                      >
                         {vendor.gstin || '—'}
                       </span>
                     </td>
@@ -377,20 +444,8 @@ export const Vendors: React.FC<VendorsPageProps> = ({ onNavigate }) => {
                     </td>
 
                     {/* Actions */}
-                    <td className="py-2.5 px-2.5 text-right overflow-hidden align-middle">
+                    <td className="py-2.5 px-3 text-right overflow-hidden align-middle">
                       <div className="inline-flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenDetail(vendor);
-                          }}
-                          className="p-1.5 rounded text-slate-500 hover:text-teal-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          title="View vendor details & purchase orders"
-                        >
-                          <IconEye className="w-3.5 h-3.5" />
-                        </button>
-
                         <button
                           type="button"
                           onClick={(e) => handleOpenEdit(vendor, e)}

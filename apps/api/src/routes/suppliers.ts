@@ -11,11 +11,16 @@ router.get('/', async (req, res): Promise<void> => {
   try {
     const search = req.query.search as string | undefined;
     const typeFilter = (req.query.vendor_type || req.query.category) as string | undefined;
-    const status = (req.query.status || req.query.status_filter) as string | undefined;
+    const rawStatus = (req.query.status || req.query.status_filter) as string | undefined;
+    const status = rawStatus?.toString().toLowerCase().trim();
 
     const suppliers = await prisma.supplier.findMany({
       where: {
-        ...(status === 'archived' ? { is_active: false } : status === 'all' ? {} : { is_active: true }),
+        ...(status === 'all'
+          ? {}
+          : status === 'archived'
+          ? { is_active: false }
+          : { is_active: true }),
         ...(typeFilter && typeFilter !== 'all' && typeFilter !== 'All Types' && typeFilter !== 'All Categories'
           ? {
               OR: [
@@ -74,6 +79,33 @@ router.get('/', async (req, res): Promise<void> => {
   } catch (err: any) {
     console.error('Fetch suppliers error:', err);
     res.status(500).json({ error: 'Failed to fetch vendors' });
+  }
+});
+
+// GET /counts - Vendor summary counts
+router.get('/counts', async (req, res): Promise<void> => {
+  try {
+    const typeFilter = (req.query.vendor_type || req.query.category) as string | undefined;
+    const typeWhere =
+      typeFilter && typeFilter !== 'all' && typeFilter !== 'All Types' && typeFilter !== 'All Categories'
+        ? {
+            OR: [
+              { category: typeFilter },
+              { vendor_type: typeFilter },
+            ],
+          }
+        : {};
+
+    const [all, active, archived] = await Promise.all([
+      prisma.supplier.count({ where: typeWhere }),
+      prisma.supplier.count({ where: { ...typeWhere, is_active: true } }),
+      prisma.supplier.count({ where: { ...typeWhere, is_active: false } }),
+    ]);
+
+    res.json({ all, active, archived });
+  } catch (err: any) {
+    console.error('Fetch vendor counts error:', err);
+    res.status(500).json({ error: 'Failed to fetch vendor counts' });
   }
 });
 

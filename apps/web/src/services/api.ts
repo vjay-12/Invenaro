@@ -850,12 +850,18 @@ export const api = {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (category && category !== 'all' && category !== 'All Types' && category !== 'All Categories') params.append('category', category);
-    if (statusFilter && statusFilter !== 'all') params.append('status_filter', statusFilter);
+    if (statusFilter) params.append('status_filter', statusFilter);
     const qs = params.toString() ? `?${params.toString()}` : '';
     const res = await fetchWithFallback<any>(`/vendors${qs}`);
     if (Array.isArray(res)) return res;
     if (res?.suppliers && Array.isArray(res.suppliers)) return res.suppliers;
     return [];
+  },
+  getVendorCounts: async (category?: string) => {
+    const params = new URLSearchParams();
+    if (category && category !== 'all' && category !== 'All Types' && category !== 'All Categories') params.append('category', category);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return fetchWithFallback<{ all: number; active: number; archived: number }>(`/vendors/counts${qs}`);
   },
   getVendor: async (id: string) => fetchWithFallback<any>(`/vendors/${id}`),
   createVendor: async (data: any) =>
