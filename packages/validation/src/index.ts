@@ -160,9 +160,20 @@ export const measurementTemplateSchema = z.object({
   fields: z.array(measurementTemplateFieldSchema).optional().default([]),
 });
 
+const measurementNumberSchema = z
+  .union([z.number(), z.string()])
+  .nullable()
+  .optional()
+  .transform((val) => {
+    if (val === undefined || val === null || val === '') return null;
+    const num = Number(val);
+    return isNaN(num) ? null : num;
+  });
+
 export const customerMeasurementValueSchema = z.object({
   field_id: z.string().min(1, 'Field ID is required'),
-  numeric_value: z.number().nullable().optional(),
+  numeric_value: measurementNumberSchema,
+  num_value: measurementNumberSchema,
   text_value: z.string().nullable().optional(),
   unit: z.enum(['in', 'cm']).default('in'),
   notes: z.string().nullable().optional(),

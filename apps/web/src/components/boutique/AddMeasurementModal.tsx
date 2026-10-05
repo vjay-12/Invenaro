@@ -69,23 +69,78 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
           setProfileNotes(existingProfile.notes || '');
           setSelectedTemplateId(existingProfile.template_id || '');
 
-          // Populate fields from current_version if available
+          // Find the template to get the complete list of fields
+          const tmpl = (data || []).find((t) => t.id === existingProfile.template_id) || existingProfile.template;
           const currentVer = existingProfile.current_version;
-          if (currentVer?.values && currentVer.values.length > 0) {
-            const firstUnit = (currentVer.values[0]?.unit as 'in' | 'cm') || 'in';
-            setGlobalUnit(firstUnit);
+          const firstUnit = (currentVer?.values?.[0]?.unit as 'in' | 'cm') || 'in';
+          setGlobalUnit(firstUnit);
 
+          if (tmpl?.fields && tmpl.fields.length > 0) {
+            // Map ALL template fields, filling values from current_version if present
+            const mapped: FieldValueState[] = tmpl.fields
+              .filter((f) => f.is_active !== false)
+              .map((f) => {
+                const name = f.field_name || (f as any).name || 'Measurement Field';
+                const code = f.field_key || (f as any).code || name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                const defaultUnit = (f.default_unit as 'in' | 'cm') || firstUnit;
+
+                // Find matching value from current version by field_id or field_key/code
+                const matchedVal = currentVer?.values?.find(
+                  (v) => (v.field_id && v.field_id === f.id) || (v as any).field_key === code || v.field_code === code
+                );
+
+                const val = matchedVal
+                  ? (matchedVal.numeric_value !== undefined && matchedVal.numeric_value !== null
+                      ? matchedVal.numeric_value
+                      : matchedVal.num_value)
+                  : null;
+
+                return {
+                  field_name: name,
+                  field_code: code,
+                  field_id: f.id,
+                  num_value: val !== null && val !== undefined ? String(val) : '',
+                  unit: (matchedVal?.unit as 'in' | 'cm') || defaultUnit,
+                  notes: matchedVal?.notes || '',
+                  is_required: false,
+                  field_type: (f.field_type === 'text' ? 'text' : 'numeric') as 'numeric' | 'text',
+                };
+              });
+
+            // Also preserve any custom values that might not be in template fields
+            const matchedFieldIds = new Set(tmpl.fields.map((f) => f.id));
+            const extraValues = (currentVer?.values || [])
+              .filter((v) => v.field_id && !matchedFieldIds.has(v.field_id))
+              .map((v) => {
+                const val = v.numeric_value !== undefined && v.numeric_value !== null ? v.numeric_value : v.num_value;
+                return {
+                  field_name: v.field_name || (v as any).name || 'Field',
+                  field_code: v.field_code || (v as any).code || 'field',
+                  field_id: v.field_id || undefined,
+                  num_value: val !== null && val !== undefined ? String(val) : '',
+                  unit: (v.unit as 'in' | 'cm') || firstUnit,
+                  notes: v.notes || '',
+                  is_required: false,
+                  field_type: 'numeric' as const,
+                };
+              });
+
+            setFields([...mapped, ...extraValues]);
+          } else if (currentVer?.values && currentVer.values.length > 0) {
             setFields(
-              currentVer.values.map((v) => ({
-                field_name: v.field_name || (v as any).name || 'Field',
-                field_code: v.field_code || (v as any).code || 'field',
-                field_id: v.field_id || undefined,
-                num_value: v.num_value !== null && v.num_value !== undefined ? String(v.num_value) : '',
-                unit: (v.unit as 'in' | 'cm') || firstUnit,
-                notes: v.notes || '',
-                is_required: false,
-                field_type: 'numeric',
-              }))
+              currentVer.values.map((v) => {
+                const val = v.numeric_value !== undefined && v.numeric_value !== null ? v.numeric_value : v.num_value;
+                return {
+                  field_name: v.field_name || (v as any).name || 'Field',
+                  field_code: v.field_code || (v as any).code || 'field',
+                  field_id: v.field_id || undefined,
+                  num_value: val !== null && val !== undefined ? String(val) : '',
+                  unit: (v.unit as 'in' | 'cm') || firstUnit,
+                  notes: v.notes || '',
+                  is_required: false,
+                  field_type: 'numeric',
+                };
+              })
             );
           }
         } else if (data && data.length > 0) {
@@ -175,17 +230,19 @@ export const AddMeasurementModal: React.FC<AddMeasurementModalProps> = ({
       const formattedValues = fields
         .filter((f) => f.num_value.trim() !== '' || f.notes.trim() !== '')
         .map((f, i) => {
-          const parsedNum = f.num_value.trim() !== '' ? parseFloat(f.num_value.trim()) : null;
-          if (parsedNum !== null && (isNaN(parsedNum) || parsedNum <= 0)) {
+          const raw = f.num_value.trim();
+          const parsedNum = raw !== '' ? parseFloat(raw) : null;
+          if (parsedNum !== null && (isNaN(parsedNum) || parsedNum < 0)) {
             throw new Error(`Invalid measurement value for "${f.field_name}". Must be a valid positive number.`);
           }
           return {
-            field_id: f.field_id,
+            field_id: f.field_id!,
             field_name: f.field_name,
             field_code: f.field_code,
             numeric_value: parsedNum,
+            num_value: parsedNum,
             unit: f.unit || globalUnit,
-            text_value: f.field_type === 'text' ? f.num_value : undefined,
+            text_value: f.field_type === 'text' ? raw : undefined,
             notes: f.notes.trim() || undefined,
             display_order: i + 1,
           };

@@ -150,7 +150,10 @@ export const CustomerMeasurementsTab: React.FC<CustomerMeasurementsTabProps> = (
 
             const values = currentVer?.values || [];
             // Prioritize filled values for summary preview so blank fields don't crowd out entered measurements
-            const filledValues = values.filter((v) => v.num_value !== null && v.num_value !== undefined && v.num_value !== ('' as any));
+            const filledValues = values.filter((v) => {
+              const val = v.numeric_value !== undefined && v.numeric_value !== null ? v.numeric_value : v.num_value;
+              return val !== null && val !== undefined && val !== ('' as any);
+            });
             const previewValues = (filledValues.length > 0 ? filledValues : values).slice(0, 6);
 
             return (
@@ -190,28 +193,31 @@ export const CustomerMeasurementsTab: React.FC<CustomerMeasurementsTabProps> = (
 
                   {/* Key Measurements Preview Grid */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 my-3">
-                    {previewValues.map((v) => (
-                      <div
-                        key={v.id}
-                        className="p-2 rounded-lg bg-[#F8FAFC] dark:bg-[#0C1017] border border-slate-100 dark:border-slate-800/80"
-                      >
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate" title={v.field_name}>
-                          {v.field_name}
-                        </div>
-                        <div className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-0.5">
-                          {v.num_value !== null && v.num_value !== undefined ? (
-                            <span>
-                              {v.num_value}{' '}
-                              <span className="text-[10px] text-teal-600 dark:text-teal-400 font-normal">
-                                {v.unit || 'in'}
+                    {previewValues.map((v) => {
+                      const displayNum = v.numeric_value !== undefined && v.numeric_value !== null ? v.numeric_value : v.num_value;
+                      return (
+                        <div
+                          key={v.id}
+                          className="p-2 rounded-lg bg-[#F8FAFC] dark:bg-[#0C1017] border border-slate-100 dark:border-slate-800/80"
+                        >
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate" title={v.field_name}>
+                            {v.field_name}
+                          </div>
+                          <div className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-0.5">
+                            {displayNum !== null && displayNum !== undefined ? (
+                              <span>
+                                {displayNum}{' '}
+                                <span className="text-[10px] text-teal-600 dark:text-teal-400 font-normal">
+                                  {v.unit || 'in'}
+                                </span>
                               </span>
-                            </span>
-                          ) : (
-                            <span className="font-sans font-normal text-slate-500">{v.text_value || '—'}</span>
-                          )}
+                            ) : (
+                              <span className="font-sans font-normal text-slate-500">{v.text_value || '—'}</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {values.length > 6 && (

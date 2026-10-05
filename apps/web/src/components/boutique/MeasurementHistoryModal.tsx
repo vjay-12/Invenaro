@@ -202,20 +202,27 @@ export const MeasurementHistoryModal: React.FC<MeasurementHistoryModalProps> = (
                                   {v.field_name}
                                 </td>
                                 <td className="py-2 px-3 font-mono font-bold text-slate-900 dark:text-white text-right">
-                                  {v.num_value !== null && v.num_value !== undefined ? (
-                                    <span>
-                                      {v.num_value}{' '}
-                                      <span className="text-[10px] text-teal-600 dark:text-teal-400 font-normal">
-                                        {v.unit || 'in'}
-                                      </span>
-                                    </span>
-                                  ) : v.text_value ? (
-                                    <span className="font-sans font-normal text-slate-600 dark:text-slate-400">
-                                      {v.text_value}
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-300 dark:text-slate-700">—</span>
-                                  )}
+                                  {(() => {
+                                    const displayNum = v.numeric_value !== undefined && v.numeric_value !== null ? v.numeric_value : v.num_value;
+                                    if (displayNum !== null && displayNum !== undefined) {
+                                      return (
+                                        <span>
+                                          {displayNum}{' '}
+                                          <span className="text-[10px] text-teal-600 dark:text-teal-400 font-normal">
+                                            {v.unit || 'in'}
+                                          </span>
+                                        </span>
+                                      );
+                                    }
+                                    if (v.text_value) {
+                                      return (
+                                        <span className="font-sans font-normal text-slate-600 dark:text-slate-400">
+                                          {v.text_value}
+                                        </span>
+                                      );
+                                    }
+                                    return <span className="text-slate-300 dark:text-slate-700">—</span>;
+                                  })()}
                                 </td>
                                 <td className="py-2 px-3 text-[11px] text-slate-500 italic truncate" title={v.notes || ''}>
                                   {v.notes || '—'}

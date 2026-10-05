@@ -2,7 +2,8 @@ import { prisma } from '../db.js';
 
 export interface MeasurementValueInput {
   field_id: string;
-  numeric_value?: number | null;
+  numeric_value?: number | string | null;
+  num_value?: number | string | null;
   text_value?: string | null;
   unit?: 'in' | 'cm';
   notes?: string | null;
@@ -83,17 +84,27 @@ export class CustomerMeasurementService {
               notes: currentVer.notes,
               is_current: currentVer.is_current,
               created_at: currentVer.created_at.toISOString(),
-              values: currentVer.values.map((v) => ({
-                id: v.id,
-                field_id: v.field_id,
-                field_key: v.field?.field_key,
-                field_name: v.field?.field_name,
-                field_type: v.field?.field_type || 'number',
-                numeric_value: v.numeric_value ? Number(v.numeric_value) : null,
-                text_value: v.text_value,
-                unit: v.unit || 'in',
-                notes: v.notes,
-              })),
+              values: currentVer.values
+                .sort((a, b) => (a.field?.display_order ?? 0) - (b.field?.display_order ?? 0))
+                .map((v) => {
+                  const numVal =
+                    v.numeric_value !== null && v.numeric_value !== undefined
+                      ? Number(v.numeric_value)
+                      : null;
+                  return {
+                    id: v.id,
+                    field_id: v.field_id,
+                    field_key: v.field?.field_key,
+                    field_name: v.field?.field_name,
+                    field_type: v.field?.field_type || 'number',
+                    numeric_value: numVal,
+                    num_value: numVal,
+                    text_value: v.text_value,
+                    unit: (v.unit as 'in' | 'cm') || 'in',
+                    notes: v.notes,
+                    display_order: v.field?.display_order || 0,
+                  };
+                }),
             }
           : null,
       };
@@ -155,16 +166,27 @@ export class CustomerMeasurementService {
             measured_by: currentVer.measured_by,
             notes: currentVer.notes,
             is_current: currentVer.is_current,
-            values: currentVer.values.map((v) => ({
-              id: v.id,
-              field_id: v.field_id,
-              field_key: v.field?.field_key,
-              field_name: v.field?.field_name,
-              numeric_value: v.numeric_value ? Number(v.numeric_value) : null,
-              text_value: v.text_value,
-              unit: v.unit,
-              notes: v.notes,
-            })),
+            values: currentVer.values
+              .sort((a, b) => (a.field?.display_order ?? 0) - (b.field?.display_order ?? 0))
+              .map((v) => {
+                const numVal =
+                  v.numeric_value !== null && v.numeric_value !== undefined
+                    ? Number(v.numeric_value)
+                    : null;
+                return {
+                  id: v.id,
+                  field_id: v.field_id,
+                  field_key: v.field?.field_key,
+                  field_name: v.field?.field_name,
+                  field_type: v.field?.field_type || 'number',
+                  numeric_value: numVal,
+                  num_value: numVal,
+                  text_value: v.text_value,
+                  unit: (v.unit as 'in' | 'cm') || 'in',
+                  notes: v.notes,
+                  display_order: v.field?.display_order || 0,
+                };
+              }),
           }
         : null,
     };
@@ -204,16 +226,27 @@ export class CustomerMeasurementService {
         notes: v.notes,
         is_current: v.is_current,
         created_at: v.created_at.toISOString(),
-        values: v.values.map((val) => ({
-          id: val.id,
-          field_id: val.field_id,
-          field_key: val.field?.field_key,
-          field_name: val.field?.field_name,
-          numeric_value: val.numeric_value ? Number(val.numeric_value) : null,
-          text_value: val.text_value,
-          unit: val.unit,
-          notes: val.notes,
-        })),
+        values: v.values
+          .sort((a, b) => (a.field?.display_order ?? 0) - (b.field?.display_order ?? 0))
+          .map((val) => {
+            const numVal =
+              val.numeric_value !== null && val.numeric_value !== undefined
+                ? Number(val.numeric_value)
+                : null;
+            return {
+              id: val.id,
+              field_id: val.field_id,
+              field_key: val.field?.field_key,
+              field_name: val.field?.field_name,
+              field_type: val.field?.field_type || 'number',
+              numeric_value: numVal,
+              num_value: numVal,
+              text_value: val.text_value,
+              unit: (val.unit as 'in' | 'cm') || 'in',
+              notes: val.notes,
+              display_order: val.field?.display_order || 0,
+            };
+          }),
       })),
     };
   }
@@ -257,14 +290,28 @@ export class CustomerMeasurementService {
       // 3. Insert Measurement Values
       if (input.values && input.values.length > 0) {
         await tx.customerMeasurementValue.createMany({
-          data: input.values.map((v) => ({
-            version_id: version.id,
-            field_id: v.field_id,
-            numeric_value: v.numeric_value !== undefined && v.numeric_value !== null ? v.numeric_value : null,
-            text_value: v.text_value || null,
-            unit: v.unit || 'in',
-            notes: v.notes || null,
-          })),
+          data: input.values.map((v) => {
+            const rawVal =
+              v.numeric_value !== undefined && v.numeric_value !== null
+                ? v.numeric_value
+                : (v as any).num_value !== undefined && (v as any).num_value !== null
+                ? (v as any).num_value
+                : null;
+            const parsed =
+              rawVal !== null && rawVal !== undefined && rawVal !== ''
+                ? Number(rawVal)
+                : null;
+            const cleanNum = parsed !== null && !isNaN(parsed) ? parsed : null;
+
+            return {
+              version_id: version.id,
+              field_id: v.field_id,
+              numeric_value: cleanNum,
+              text_value: v.text_value || null,
+              unit: v.unit || 'in',
+              notes: v.notes || null,
+            };
+          }),
         });
       }
 
@@ -304,14 +351,28 @@ export class CustomerMeasurementService {
       // 3. Save new values
       if (input.values && input.values.length > 0) {
         await tx.customerMeasurementValue.createMany({
-          data: input.values.map((v) => ({
-            version_id: newVersion.id,
-            field_id: v.field_id,
-            numeric_value: v.numeric_value !== undefined && v.numeric_value !== null ? v.numeric_value : null,
-            text_value: v.text_value || null,
-            unit: v.unit || 'in',
-            notes: v.notes || null,
-          })),
+          data: input.values.map((v) => {
+            const rawVal =
+              v.numeric_value !== undefined && v.numeric_value !== null
+                ? v.numeric_value
+                : (v as any).num_value !== undefined && (v as any).num_value !== null
+                ? (v as any).num_value
+                : null;
+            const parsed =
+              rawVal !== null && rawVal !== undefined && rawVal !== ''
+                ? Number(rawVal)
+                : null;
+            const cleanNum = parsed !== null && !isNaN(parsed) ? parsed : null;
+
+            return {
+              version_id: newVersion.id,
+              field_id: v.field_id,
+              numeric_value: cleanNum,
+              text_value: v.text_value || null,
+              unit: v.unit || 'in',
+              notes: v.notes || null,
+            };
+          }),
         });
       }
 

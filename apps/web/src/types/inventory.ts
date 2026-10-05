@@ -328,13 +328,16 @@ export interface MeasurementTemplate {
 export interface CustomerMeasurementValue {
   id: string;
   field_id?: string | null;
+  field_key?: string;
   field_name: string;
-  field_code: string;
+  field_code?: string;
+  field_type?: string;
+  numeric_value?: number | null;
   num_value?: number | null;
   unit?: string | null;
   text_value?: string | null;
   notes?: string | null;
-  display_order: number;
+  display_order?: number;
 }
 
 export interface CustomerMeasurementVersion {

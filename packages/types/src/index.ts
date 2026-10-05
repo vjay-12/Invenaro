@@ -210,10 +210,13 @@ export interface CustomerMeasurementValueDTO {
   field_id: string;
   field_key?: string;
   field_name?: string;
+  field_type?: string;
   numeric_value?: number | null;
+  num_value?: number | null;
   text_value?: string | null;
   unit: MeasurementUnit;
   notes?: string | null;
+  display_order?: number;
 }
 
 export interface CustomerMeasurementVersionDTO {
